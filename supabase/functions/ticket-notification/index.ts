@@ -20,42 +20,102 @@ serve(async (req: Request) => {
 
   try {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
-    const { record } = await req.json(); // Payload from Database Webhook
+    const { record, action = 'create', newStatus } = await req.json(); // Payload from Database Webhook
 
-    if (!record || !record.pm_id) {
-      throw new Error("Invalid payload: Missing record or pm_id");
+    if (!record) {
+      throw new Error("Invalid payload: Missing record");
     }
 
-    // 1. Fetch PM details (Email)
-    // Note: Assuming 'users' table has an email column or linking to auth.users
-    // For this example, we fetch from public.users and assume username is email or email is stored
-    const { data: pmUser, error: pmError } = await supabase
+    // Fallback pm_id if passed as pmid or projectid
+    const effectivePmId = record.pm_id || record.pmid;
+
+    // 1. Fetch Creator Details
+    const { data: creator } = await supabase
       .from("users")
-      .select("username, name") // adjusting to schema, assuming username might be email or mapped
-      .eq("id", record.pm_id)
+      .select("username, name, role")
+      .eq("id", record.created_by)
       .single();
 
-    if (pmError || !pmUser) {
-      console.error("Error fetching PM:", pmError);
-      throw new Error("Project Manager not found");
+    const creatorName = creator?.name || "A user";
+    const isPMCreator = creator?.role === 'project_manager';
+
+    // 2. Fetch IT Specialists from profiles (primary source for new roles) and users (legacy)
+    const { data: itUsers } = await supabase.from("users").select("username").eq("role", "it_specialist");
+    const { data: itProfiles } = await supabase.from("profiles").select("email, username").eq("role", "it_specialist");
+
+    const allItEmails = [
+      ...(itUsers || []).map(u => u.username),
+      ...(itProfiles || []).map(p => p.email || p.username)
+    ].filter(email => email && email.includes("@"));
+
+    // Deduplicate IT emails
+    const itEmails = [...new Set(allItEmails)];
+
+    // 3. Fetch PM Details (if applicable)
+    let pmEmail = "";
+    if (effectivePmId && !isPMCreator) {
+      const { data: pmUser } = await supabase
+        .from("users")
+        .select("username, name")
+        .eq("id", effectivePmId)
+        .single();
+      if (pmUser && pmUser.username.includes("@")) {
+        pmEmail = pmUser.username;
+      }
     }
 
-    // Determine PM Email (Fallback logic if username isn't email)
-    const pmEmail = pmUser.username.includes("@") ? pmUser.username : "pm-default@smartkpis.com"; 
+    // Prepare recipients
+    const toRecipients = [];
 
-    // 2. Prepare Email Content
-    const emailSubject = `New Ticket Assigned: ${record.title}`;
-    const emailBody = `
-      <h1>New Ticket Notification</h1>
-      <p>Hello ${pmUser.name},</p>
-      <p>A new <strong>${record.priority}</strong> priority ticket has been opened by a supervisor.</p>
+    // IT Specialists are always the primary TO recipients for new technical issues
+    if (itEmails.length > 0) {
+      toRecipients.push(...itEmails);
+    }
+
+    // PM should also be CC'd/notified if a supervisor under them opens it
+    if (pmEmail) {
+      toRecipients.push(pmEmail);
+    }
+
+    // Fallback if no specific TO recipient
+    if (toRecipients.length === 0) {
+      toRecipients.push(SUPER_ADMIN_EMAIL);
+    }
+
+    // Always BCC super admin
+    const bccRecipients = [SUPER_ADMIN_EMAIL];
+
+    // 4. Prepare Email Content based on Action
+    let emailSubject = `New Ticket Opened: ${record.title}`;
+    let emailBody = `
+      <h1>New Support Ticket</h1>
+      <p>Hello,</p>
+      <p>A new <strong>${record.priority}</strong> priority ticket has been opened by <strong>${creatorName}</strong>.</p>
       <p><strong>Ticket Title:</strong> ${record.title}</p>
+      <p><strong>Category:</strong> ${record.category}</p>
       <p><strong>Description:</strong> ${record.description}</p>
       <br/>
-      <p>Please log in to the dashboard to begin resolution.</p>
+      <p>Please log in to the dashboard to view and manage this ticket.</p>
     `;
 
-    // 3. Send Email via Resend
+    if (action === 'status_change') {
+      const statusLabel = newStatus === 'in_progress' ? 'قيد العمل (In Progress)'
+        : newStatus === 'solved' ? 'تم الحل (Solved)'
+          : newStatus === 'closed' ? 'مغلق (Closed)'
+            : newStatus === 'open' ? 'مفتوح (Open)' : newStatus;
+
+      emailSubject = `Ticket Status Updated: ${record.title}`;
+      emailBody = `
+         <h1>Ticket Status Update</h1>
+         <p>Hello,</p>
+         <p>The status of the ticket <strong>"${record.title}"</strong> has been updated to: <strong style="color: #0056b3;">${statusLabel}</strong>.</p>
+         <p><strong>Category:</strong> ${record.category}</p>
+         <br/>
+         <p>Please log in to the dashboard to review the ticket details.</p>
+       `;
+    }
+
+    // 5. Send Email via Resend
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -64,8 +124,8 @@ serve(async (req: Request) => {
       },
       body: JSON.stringify({
         from: "notifications@smartkpis.com",
-        to: [pmEmail],
-        bcc: [SUPER_ADMIN_EMAIL],
+        to: [...new Set(toRecipients)],
+        bcc: [...new Set(bccRecipients)],
         subject: emailSubject,
         html: emailBody,
       }),

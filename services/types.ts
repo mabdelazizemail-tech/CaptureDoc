@@ -81,7 +81,7 @@ export interface Asset {
   type: string; // Hardware Type
   // Updated status to include 'in_use' and 'in_storage'
   status: 'operational' | 'faulty' | 'maintenance' | 'retired' | 'in_use' | 'in_storage';
-  
+
   // Specs
   serialNumber: string;
   macAddress?: string;
@@ -134,6 +134,7 @@ export interface Ticket {
   createdAt: string;
   solvedAt?: string;
   closedAt?: string;
+  cost?: number;
 }
 
 export interface Session {

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { User, Role } from '../types';
+import { User, Role } from '../services/types';
 
 interface SidebarProps {
   user: User;
@@ -17,13 +17,14 @@ interface MenuItem {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogout, isOpen, toggleSidebar }) => {
-  
+
   const menuItems = useMemo<MenuItem[]>(() => {
     const commonAdminItems: MenuItem[] = [
       { id: 'dashboard', label: 'لوحة التحكم', icon: 'dashboard' },
       { id: 'reports', label: 'التحليلات', icon: 'analytics' },
+      { id: 'hr', label: 'الموارد البشرية', icon: 'badge' },
     ];
-    
+
     const operationalItems: MenuItem[] = [
       { id: 'structure', label: 'الهيكل التنظيمي', icon: 'account_tree' },
       { id: 'approvals', label: 'المراجعات', icon: 'fact_check' },
@@ -31,7 +32,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
       { id: 'requests', label: 'الطلبات', icon: 'notifications_active' },
       { id: 'teams', label: 'قائمة المستخدمين', icon: 'groups' },
       { id: 'operators', label: 'قائمة الموظفين', icon: 'badge' },
-      { id: 'assets', label: 'الأصول', icon: 'precision_manufacturing' }, 
+      { id: 'assets', label: 'الأصول', icon: 'precision_manufacturing' },
       { id: 'tickets', label: 'الدعم الفني', icon: 'confirmation_number' }, // Added Ticket System
       { id: 'upload', label: 'استيراد بيانات', icon: 'upload_file' },
     ];
@@ -61,9 +62,9 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
         ];
       case 'it_specialist':
         return [
-            { id: 'assets', label: 'إدارة الأصول', icon: 'inventory' },
-            { id: 'tickets', label: 'الدعم الفني', icon: 'confirmation_number' },
-            { id: 'reports', label: 'التقارير', icon: 'analytics' }
+          { id: 'assets', label: 'إدارة الأصول', icon: 'inventory' },
+          { id: 'tickets', label: 'الدعم الفني', icon: 'confirmation_number' },
+          { id: 'reports', label: 'التقارير', icon: 'analytics' }
         ];
       default:
         return [];
@@ -75,21 +76,21 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
     'power_admin': 'مدير تنفيذي (Power)',
     'project_manager': 'مدير المشروع',
     'supervisor': 'مشرف فريق',
-    'it_specialist': 'أخصائي IT'
+    'it_specialist': 'رئيس الدعم الفني'
   }[user.role] || 'مستخدم';
 
   return (
     <>
       {/* Mobile Overlay */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden"
           onClick={toggleSidebar}
         />
       )}
 
       {/* Sidebar Container */}
-      <aside 
+      <aside
         className={`
           fixed top-0 right-0 h-full w-64 bg-[#232b3e] text-gray-300 z-30 transition-transform duration-300 ease-in-out flex flex-col
           ${isOpen ? 'translate-x-0' : 'translate-x-full'}
@@ -97,22 +98,22 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
         `}
       >
         <div className="h-20 flex flex-col justify-center px-6 bg-[#1b2130] shadow-sm">
-            <div className="flex items-center gap-2">
-                <span className="material-icons text-primary text-2xl">bar_chart</span>
-                <h1 className="text-xl font-bold text-white tracking-wide">Capture Flow</h1>
-            </div>
-            <div className="text-[10px] text-gray-500 font-medium pr-8 -mt-0.5 tracking-wider">(Powered by Capture Doc)</div>
+          <div className="flex items-center gap-2">
+            <span className="material-icons text-primary text-2xl">bar_chart</span>
+            <h1 className="text-xl font-bold text-white tracking-wide">Capture Flow</h1>
+          </div>
+          <div className="text-[10px] text-gray-500 font-medium pr-8 -mt-0.5 tracking-wider">(Powered by Capture Doc)</div>
         </div>
 
         <div className="px-6 py-6">
           <div className="flex items-center gap-3 mb-6">
-             <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-white font-bold uppercase">
-               {user.name.charAt(0)}
-             </div>
-             <div>
-               <p className="text-sm font-bold text-white leading-tight">{user.name}</p>
-               <p className="text-xs text-gray-400">{roleLabel}</p>
-             </div>
+            <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-white font-bold uppercase">
+              {user.name.charAt(0)}
+            </div>
+            <div>
+              <p className="text-sm font-bold text-white leading-tight">{user.name}</p>
+              <p className="text-xs text-gray-400">{roleLabel}</p>
+            </div>
           </div>
         </div>
 
@@ -126,8 +127,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
               }}
               className={`
                 w-full flex items-center space-x-reverse space-x-3 px-4 py-3 rounded-md transition-all duration-200
-                ${activePage === item.id 
-                  ? 'bg-primary text-white shadow-lg shadow-blue-900/50 font-bold' 
+                ${activePage === item.id
+                  ? 'bg-primary text-white shadow-lg shadow-blue-900/50 font-bold'
                   : 'hover:bg-[#2d3648] hover:text-white text-gray-400'}
               `}
             >

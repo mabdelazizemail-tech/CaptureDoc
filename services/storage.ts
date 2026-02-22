@@ -527,7 +527,7 @@ export const StorageService = {
     getTickets: async (user: User): Promise<Ticket[]> => {
         let query = supabase.from('tickets').select('*');
         if (user.role === 'supervisor') { query = query.eq('created_by', user.id); }
-        else if (user.role === 'project_manager') { query = query.eq('projectid', user.projectId); }
+        else if (user.role === 'project_manager') { query = query.or(`created_by.eq.${user.id},pmid.eq.${user.id}`); }
 
         const { data, error } = await query;
         if (error || !data) {
@@ -572,7 +572,8 @@ export const StorageService = {
             projectName: 'Unknown',
             createdAt: t.createdat,
             solvedAt: t.solvedat,
-            closedAt: t.closedat
+            closedAt: t.closedat,
+            cost: t.cost
         }));
     },
     createTicket: async (ticket: Partial<Ticket>): Promise<{ success: boolean; error?: string }> => {
@@ -598,26 +599,69 @@ export const StorageService = {
         const { data, error } = await supabase.from('tickets').insert(payload).select().single();
         if (error) return { success: false, error: error.message };
 
-        // Send Notification to PM (Replacing broken DB Trigger)
-        if (pmId) {
-            try {
-                // Ensure pm_id is included as expected by the edge function logic
-                await supabase.functions.invoke('ticket-notification', {
-                    body: { record: { ...data, pm_id: pmId } }
-                });
-            } catch (err) {
-                console.error("Failed to invoke edge function:", err);
-            }
+        // Send Notification (Replacing broken DB Trigger)
+        try {
+            // Ensure pm_id is included as expected by the edge function logic if present
+            await supabase.functions.invoke('ticket-notification', {
+                body: { record: { ...data, pm_id: pmId || undefined } }
+            });
+        } catch (err) {
+            console.error("Failed to invoke edge function:", err);
         }
 
         return { success: true };
     },
 
-    updateTicketStatus: async (id: string, status: 'in_progress' | 'solved' | 'closed'): Promise<boolean> => {
+    updateTicketStatus: async (id: string, status: 'open' | 'in_progress' | 'solved' | 'closed', cost?: number): Promise<boolean> => {
         const updates: any = { status };
-        if (status === 'solved') updates.solvedat = new Date().toISOString();
+        if (status === 'solved') {
+            updates.solvedat = new Date().toISOString();
+            if (cost !== undefined) updates.cost = cost;
+        }
         if (status === 'closed') updates.closedat = new Date().toISOString();
+        if (status === 'open') {
+            updates.solvedat = null;
+            updates.closedat = null;
+        }
+
+        // 1. Fetch current ticket to get required context for notification
+        const { data: ticket } = await supabase.from('tickets').select('*').eq('id', id).single();
+
+        // 2. Perform Update
         const { error } = await supabase.from('tickets').update(updates).eq('id', id);
+
+        if (!error && ticket) {
+            // 3. Send Notification Exception
+            try {
+                await supabase.functions.invoke('ticket-notification', {
+                    body: {
+                        record: ticket,
+                        action: 'status_change',
+                        newStatus: status
+                    }
+                });
+            } catch (err) {
+                console.error("Failed to invoke edge function for status update:", err);
+            }
+        }
+        return !error;
+    },
+
+    updateTicket: async (id: string, updates: Partial<Ticket>): Promise<boolean> => {
+        const payload: any = {};
+        if (updates.title) payload.title = updates.title;
+        if (updates.category) payload.category = updates.category;
+        if (updates.priority) payload.priority = updates.priority;
+        if (updates.description) payload.description = updates.description;
+        if (updates.status) payload.status = updates.status;
+        if (updates.cost !== undefined) payload.cost = updates.cost;
+
+        const { error } = await supabase.from('tickets').update(payload).eq('id', id);
+        return !error;
+    },
+
+    deleteTickets: async (ids: string[]): Promise<boolean> => {
+        const { error } = await supabase.from('tickets').delete().in('id', ids);
         return !error;
     }
 };
