@@ -19,6 +19,8 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
     const [selectedProjectId, setSelectedProjectId] = useState<string>(user.projectId || 'all');
     const [allProjects, setAllProjects] = useState<{ id: string, name: string }[]>([]);
 
+    const isFullAdmin = user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'it_specialist' || user.role === 'hr_admin';
+
     useEffect(() => {
         async function fetchProjects() {
             if (isFullAdmin) {
@@ -27,7 +29,7 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
             }
         }
         fetchProjects();
-    }, [user.role]);
+    }, [isFullAdmin]);
 
     useEffect(() => {
         async function fetchInitialData() {
@@ -65,8 +67,6 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
     }, [user.id, selectedProjectId]);
 
     if (loading) return <div className="p-8 text-center text-gray-500">جاري التحميل...</div>;
-
-    const isFullAdmin = user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'it_specialist' || user.role === 'hr_admin';
 
     return (
         <div className="space-y-6 animate-fade-in">

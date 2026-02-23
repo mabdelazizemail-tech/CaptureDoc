@@ -1,5 +1,16 @@
 -- HR MODULE SCHEMA
 
+-- 1. Helper Function to determine if user is system admin
+CREATE OR REPLACE FUNCTION public.is_hr_admin()
+RETURNS boolean AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id::text = auth.uid()::text AND role IN ('super_admin', 'power_admin', 'it_specialist', 'hr_admin')
+  ) OR (auth.role() = 'anon');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 
 -- 2. EMPLOYEES
 CREATE TABLE public.hr_employees (
