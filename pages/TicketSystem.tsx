@@ -103,7 +103,7 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
     }, [user]);
 
     useEffect(() => {
-        if ((isSuperAdmin || user.role === 'it_specialist') && tickets.length > 0) {
+        if ((isSuperAdmin || user.role === 'it_specialist' || user.role === 'hr_admin') && tickets.length > 0) {
             const solvedTickets = tickets.filter(t => t.status === 'solved' || t.status === 'closed');
             let totalTimeMs = 0;
             let count = 0;
@@ -349,7 +349,7 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                         <h2 className="text-2xl font-bold text-gray-800">لوحة تحكم الدعم الفني</h2>
                         <p className="text-sm text-gray-500">نظرة شاملة ومتابعة فورية للحالات</p>
                     </div>
-                    {(isSuperAdmin || user.role === 'it_specialist') && (
+                    {(isSuperAdmin || user.role === 'it_specialist' || user.role === 'hr_admin') && (
                         <div className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
                             <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
                             <span className="text-xs font-bold text-blue-700">تحديث تلقائي مفعل</span>
@@ -394,7 +394,7 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                             <span className="material-icons text-[12px]">person</span>
                                             {t.creatorName}
                                         </div>
-                                        {user.role === 'it_specialist' && (
+                                        {(user.role === 'it_specialist' || user.role === 'hr_admin') && (
                                             <button
                                                 onClick={() => handleStatusChange(t.id, 'in_progress')}
                                                 className="bg-blue-600 text-white px-3 py-1 rounded text-xs font-bold hover:bg-blue-700 shadow-sm"
@@ -428,7 +428,7 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                     </div>
                                     <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-50">
                                         <div className="text-[10px] text-gray-400">{new Date(t.createdAt).toLocaleDateString()}</div>
-                                        {user.role === 'it_specialist' && (
+                                        {(user.role === 'it_specialist' || user.role === 'hr_admin') && (
                                             <button
                                                 onClick={() => handleStatusChange(t.id, 'solved')}
                                                 className="bg-green-600 text-white px-4 py-1.5 rounded text-xs font-bold hover:bg-green-700 flex items-center gap-1 shadow-sm"
@@ -561,7 +561,7 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
             />
 
             {(user.role === 'supervisor' || user.role === 'project_manager') && renderCreatorView()}
-            {(user.role === 'it_specialist' || isSuperAdmin) && renderSupportDashboard()}
+            {(user.role === 'it_specialist' || user.role === 'hr_admin' || isSuperAdmin) && renderSupportDashboard()}
 
             {/* Create Ticket Modal */}
             {showCreateModal && (

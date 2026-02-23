@@ -1,5 +1,5 @@
 
-export type Role = 'super_admin' | 'power_admin' | 'project_manager' | 'supervisor' | 'it_specialist';
+export type Role = 'super_admin' | 'power_admin' | 'project_manager' | 'supervisor' | 'it_specialist' | 'hr_admin';
 
 export interface Project {
   id: string;

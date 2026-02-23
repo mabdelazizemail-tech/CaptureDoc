@@ -66,6 +66,18 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
           { id: 'tickets', label: 'الدعم الفني', icon: 'confirmation_number' },
           { id: 'reports', label: 'التقارير', icon: 'analytics' }
         ];
+      case 'hr_admin':
+        return [
+          { id: 'hr', label: 'الموارد البشرية', icon: 'badge' },
+          { id: 'reports', label: 'التحليلات', icon: 'analytics' },
+          { id: 'teams', label: 'إدارة المستخدمين', icon: 'groups' },
+          { id: 'operators', label: 'قائمة الموظفين', icon: 'badge' },
+          { id: 'assets', label: 'إدارة الأصول', icon: 'inventory' },
+          { id: 'tickets', label: 'الدعم الفني', icon: 'confirmation_number' },
+          { id: 'approvals', label: 'المراجعات', icon: 'fact_check' },
+          { id: 'history', label: 'سجل التقييمات', icon: 'manage_search' },
+          { id: 'upload', label: 'استيراد بيانات', icon: 'upload_file' },
+        ];
       default:
         return [];
     }
@@ -76,7 +88,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
     'power_admin': 'مدير تنفيذي (Power)',
     'project_manager': 'مدير المشروع',
     'supervisor': 'مشرف فريق',
-    'it_specialist': 'رئيس الدعم الفني'
+    'it_specialist': 'رئيس الدعم الفني',
+    'hr_admin': 'مسؤول الموارد البشرية'
   }[user.role] || 'مستخدم';
 
   return (

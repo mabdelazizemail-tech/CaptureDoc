@@ -8,7 +8,7 @@ import HealthCheck from './pages/HealthCheck';
 import DatabaseDebugger from './pages/DatabaseDebugger';
 import HRDashboard from './pages/HR/HRDashboard';
 import Sidebar from './components/Sidebar';
-import { User } from './types';
+import { User } from './services/types';
 import { StorageService } from './services/storage';
 import { supabase } from './services/supabaseClient';
 
@@ -63,6 +63,7 @@ const App: React.FC = () => {
   }, [user]);
 
   const handleLogin = (loggedInUser: User) => {
+    console.log("App: handleLogin called with user:", loggedInUser);
     setUser(loggedInUser);
 
     // Check route again on login, or default to role-based view
@@ -74,6 +75,8 @@ const App: React.FC = () => {
     } else {
       if (loggedInUser.role === 'it_specialist') {
         setActivePage('assets');
+      } else if (loggedInUser.role === 'hr_admin') {
+        setActivePage('hr');
       } else {
         const isAdmin = loggedInUser.role === 'super_admin' || loggedInUser.role === 'power_admin' || loggedInUser.role === 'project_manager';
         setActivePage(isAdmin ? 'reports' : 'dashboard');
@@ -91,7 +94,7 @@ const App: React.FC = () => {
     return <Login onLogin={handleLogin} />;
   }
 
-  const isAdmin = user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'project_manager';
+  const isAdmin = user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'project_manager' || user.role === 'hr_admin';
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">

@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Operator, KPILog, Project, Role, UnlockRequest, SiteSummary, Asset, MaintenanceRequest } from '../types';
-import { Ticket } from '../services/types';
+import { User, Operator, KPILog, Project, Role, UnlockRequest, SiteSummary, Asset, MaintenanceRequest, Ticket } from '../services/types';
 import { StorageService } from '../services/storage';
 import { supabase } from '../services/supabaseClient';
 import Toast from '../components/Toast';
@@ -37,6 +36,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
     const [supervisors, setSupervisors] = useState<User[]>([]);
     const [projectManagers, setProjectManagers] = useState<User[]>([]);
     const [itSpecialists, setItSpecialists] = useState<User[]>([]);
+    const [hrAdmins, setHrAdmins] = useState<User[]>([]);
     const [allProjectManagers, setAllProjectManagers] = useState<User[]>([]);
     const [projectUsers, setProjectUsers] = useState<User[]>([]);
     const [operators, setOperators] = useState<Operator[]>([]);
@@ -96,7 +96,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
 
     // User Management
     const [userSearchTerm, setUserSearchTerm] = useState('');
-    const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'project_manager' | 'supervisor' | 'it_specialist'>('all');
+    const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'project_manager' | 'supervisor' | 'it_specialist' | 'hr_admin'>('all');
 
     // Lookup for User Management
     const [allRegisteredProfiles, setAllRegisteredProfiles] = useState<User[]>([]);
@@ -134,9 +134,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
 
     const isSuperAdmin = currentUser.role === 'super_admin' || currentUser.role === 'power_admin';
     const isItSpecialist = currentUser.role === 'it_specialist';
+    const isHrAdmin = currentUser.role === 'hr_admin';
 
     // Defines who can create/switch projects globally
-    const canManageProjects = isSuperAdmin || isItSpecialist;
+    const canManageProjects = isSuperAdmin || isItSpecialist || isHrAdmin;
 
     // 1. Initial Load
     useEffect(() => {
@@ -263,6 +264,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
         let pms = users.filter(u => u.role === 'project_manager');
         const sups = users.filter(u => u.role === 'supervisor');
         const its = users.filter(u => u.role === 'it_specialist');
+        const hrs = users.filter(u => u.role === 'hr_admin');
 
         // If viewing a specific project, ensure the assigned PM is visible even if their profile is global?
         // Actually StorageService.getUsers(pid) handles getting users for that project.
@@ -280,7 +282,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
         setSupervisors(sups);
         setProjectManagers(pms);
         setItSpecialists(its);
-        setProjectUsers([...sups, ...pms, ...its]);
+        setHrAdmins(hrs);
+        setProjectUsers([...sups, ...pms, ...its, ...hrs]);
         setOperators(ops);
         setAssets(assts);
         setLogs(lgs);
@@ -672,7 +675,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
         e.preventDefault();
         if (!newSupervisor.name || !newSupervisor.username) return;
 
-        if (canManageProjects && !newSupervisor.targetProjectId && newSupervisor.role !== 'it_specialist' && newSupervisor.role !== 'project_manager') {
+        if (canManageProjects && !newSupervisor.targetProjectId && newSupervisor.role !== 'it_specialist' && newSupervisor.role !== 'project_manager' && newSupervisor.role !== 'hr_admin') {
             showToast('يجب اختيار المشروع.', 'error');
             return;
         }
@@ -698,7 +701,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
         // However, the schema might expect one. We can set it to null or the first one.
         if (userRole === 'project_manager') {
             finalProjectId = newSupervisor.targetProjectIds.length > 0 ? newSupervisor.targetProjectIds[0] : '';
-        } else if (userRole === 'it_specialist') {
+        } else if (userRole === 'it_specialist' || userRole === 'hr_admin') {
             finalProjectId = '';
         } else {
             if (!finalProjectId && currentProject && currentProject.id !== 'all') {
@@ -746,6 +749,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
                 'supervisor': 'المشرف',
                 'project_manager': 'مدير المشروع',
                 'it_specialist': 'أخصائي IT',
+                'hr_admin': 'مسؤول الموارد البشرية',
                 'power_admin': 'مدير تنفيذي'
             };
             const roleLabel = roleLabels[userRole] || 'المستخدم';
@@ -1301,10 +1305,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
                                             className="w-full p-3 bg-gray-50 border rounded-lg outline-none focus:ring-2 focus:ring-primary disabled:bg-gray-200 disabled:text-gray-500"
                                             value={newSupervisor.targetProjectId}
                                             onChange={(e) => setNewSupervisor({ ...newSupervisor, targetProjectId: e.target.value })}
-                                            required={currentProject?.id === 'all' && newSupervisor.role !== 'it_specialist'}
-                                            disabled={(!!editingSupervisor?.id && currentProject?.id !== 'all') || newSupervisor.role === 'it_specialist'}
+                                            required={currentProject?.id === 'all' && newSupervisor.role !== 'it_specialist' && newSupervisor.role !== 'hr_admin'}
+                                            disabled={(!!editingSupervisor?.id && currentProject?.id !== 'all') || newSupervisor.role === 'it_specialist' || newSupervisor.role === 'hr_admin'}
                                         >
-                                            <option value="">{newSupervisor.role === 'it_specialist' ? 'كل المشاريع (Global)' : '-- اختر المشروع --'}</option>
+                                            <option value="">{(newSupervisor.role === 'it_specialist' || newSupervisor.role === 'hr_admin') ? 'كل المشاريع (Global)' : '-- اختر المشروع --'}</option>
                                             {projects.map(p => (
                                                 <option key={p.id} value={p.id}>{p.name}</option>
                                             ))}
@@ -1324,6 +1328,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
                                         <option value="supervisor">مشرف فريق</option>
                                         {isSuperAdmin && <option value="project_manager">مدير مشروع</option>}
                                         <option value="it_specialist">أخصائي تكنولوجيا المعلومات</option>
+                                        {(isSuperAdmin || currentUser.role === 'hr_admin') && <option value="hr_admin">مسؤول الموارد البشرية</option>}
                                     </select>
                                 </div>
                             )}
@@ -1580,6 +1585,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
                                                 <option value="project_manager">مدراء مشاريع</option>
                                                 <option value="supervisor">مشرفين</option>
                                                 <option value="it_specialist">أخصائيين IT</option>
+                                                <option value="hr_admin">مسؤول الموارد البشرية</option>
                                             </select>
                                             <span className="material-icons absolute left-2 top-2 text-gray-400 text-sm pointer-events-none">filter_list</span>
                                         </div>
@@ -1613,7 +1619,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
-                                            {supervisors.concat(projectManagers).concat(itSpecialists)
+                                            {supervisors.concat(projectManagers).concat(itSpecialists).concat(hrAdmins)
                                                 .filter(u => {
                                                     // FIXED: NULL SAFETY CHECK FOR USER NAME
                                                     const userName = u.name || '';
@@ -1631,8 +1637,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
                                                             {u.name || <span className="text-gray-400 italic">Unknown</span>}
                                                         </td>
                                                         <td className="p-4">
-                                                            <span className={`px-2 py-1 rounded text-xs ${u.role === 'project_manager' ? 'bg-purple-100 text-purple-700' : u.role === 'it_specialist' ? 'bg-cyan-100 text-cyan-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                                {u.role === 'project_manager' ? 'مدير مشروع' : u.role === 'it_specialist' ? 'أخصائي IT' : 'مشرف'}
+                                                            <span className={`px-2 py-1 rounded text-xs ${u.role === 'project_manager' ? 'bg-purple-100 text-purple-700' : u.role === 'it_specialist' ? 'bg-cyan-100 text-cyan-700' : u.role === 'hr_admin' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                                {u.role === 'project_manager' ? 'مدير مشروع' : u.role === 'it_specialist' ? 'أخصائي IT' : u.role === 'hr_admin' ? 'مسؤول الموارد البشرية' : 'مشرف'}
                                                             </span>
                                                         </td>
                                                         <td className="p-4 text-gray-600">

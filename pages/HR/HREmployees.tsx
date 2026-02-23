@@ -25,7 +25,13 @@ interface Employee {
     status: string;
 }
 
-const HREmployees: React.FC = () => {
+import { User } from '../../services/types';
+
+interface HREmployeesProps {
+    user: User;
+}
+
+const HREmployees: React.FC<HREmployeesProps> = ({ user }) => {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
@@ -47,7 +53,20 @@ const HREmployees: React.FC = () => {
 
     const fetchEmployees = async () => {
         setLoading(true);
-        const { data } = await supabase.from('hr_employees').select('*').order('created_at', { ascending: false });
+        let query = supabase.from('hr_employees').select('*');
+
+        // Filter by project for managers
+        if (user.role === 'project_manager' && user.projectId) {
+            // Find project name to match with the text column
+            const { data: proj } = await supabase.from('projects').select('name').eq('id', user.projectId).single();
+            if (proj) {
+                query = query.or(`project.eq.${proj.name},project.eq.${user.projectId}`);
+            } else {
+                query = query.eq('project', user.projectId);
+            }
+        }
+
+        const { data } = await query.order('created_at', { ascending: false });
         if (data) setEmployees(data);
         setLoading(false);
         setSelectedEmployees([]);
@@ -80,8 +99,8 @@ const HREmployees: React.FC = () => {
 
         const { error } = await supabase.rpc('hr_update_employee', {
             p_id: editingEmp.id || null,
-            p_full_name: editingEmp.full_name,
-            p_email: editingEmp.email,
+            p_full_name: editingEmp.full_name || null,
+            p_email: editingEmp.email || null,
             p_phone: editingEmp.phone || null,
             p_national_id: editingEmp.national_id || null,
             p_employee_code: editingEmp.employee_code || null,
@@ -92,7 +111,7 @@ const HREmployees: React.FC = () => {
             p_gender: editingEmp.gender || null,
             p_date_of_birth: editingEmp.date_of_birth || null,
             p_education: editingEmp.education || null,
-            p_hire_date: editingEmp.hire_date,
+            p_hire_date: editingEmp.hire_date || null,
             p_job_title: editingEmp.job_title || null,
             p_department: editingEmp.department || null,
             p_project: editingEmp.project || null,
