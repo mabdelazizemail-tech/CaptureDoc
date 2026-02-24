@@ -510,13 +510,13 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                             <span className="text-[10px] font-bold text-gray-500 uppercase">{t.priority}</span>
                                         </td>
                                         <td className="p-4 font-mono font-bold text-red-600">
-                                            {t.cost !== null && t.cost !== undefined ? `$${t.cost}` : '-'}
+                                            {t.cost !== null && t.cost !== undefined ? `${t.cost} EGP` : '-'}
                                         </td>
                                         <td className="p-4 font-mono text-xs text-gray-400">
                                             {new Date(t.createdAt).toLocaleDateString()}
                                         </td>
                                         <td className="p-4">
-                                            {isSuperAdmin ? (
+                                            {(isSuperAdmin || user.role === 'it_specialist') ? (
                                                 <button
                                                     onClick={() => setEditModal({ isOpen: true, ticket: t })}
                                                     className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
@@ -687,7 +687,7 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 mb-1">التكلفة الإجمالية للحفظ (داخلي وغير مرئي للمستخدم)</label>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-gray-400 font-bold">$</span>
+                                    <span className="text-gray-400 font-bold text-xs uppercase">EGP</span>
                                     <input
                                         type="number"
                                         min="0"
@@ -759,7 +759,7 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1">التكلفة ($)</label>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">التكلفة (EGP)</label>
                                 <input
                                     type="number"
                                     min="0"

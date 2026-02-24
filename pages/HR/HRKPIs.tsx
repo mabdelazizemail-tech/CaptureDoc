@@ -23,9 +23,10 @@ import { User } from '../../services/types';
 
 interface HRKPIsProps {
     user: User;
+    selectedProjectId: string;
 }
 
-const HRKPIs: React.FC<HRKPIsProps> = ({ user }) => {
+const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [kpiData, setKpiData] = useState<KPIEntry[]>([]);
     const [loading, setLoading] = useState(true);
@@ -34,19 +35,24 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user }) => {
 
     useEffect(() => {
         fetchData();
-    }, [selectedMonth]);
+    }, [selectedMonth, selectedProjectId]);
 
     const fetchData = async () => {
         setLoading(true);
         try {
             // Fetch active employees
             let empQuery = supabase.from('hr_employees').select('id, full_name, department, employee_code').eq('status', 'active');
-            if (user.role === 'project_manager' && user.projectId) {
-                const { data: proj } = await supabase.from('projects').select('name').eq('id', user.projectId).single();
+
+            const projectToFilter = (user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'it_specialist' || user.role === 'hr_admin')
+                ? (selectedProjectId !== 'all' ? selectedProjectId : null)
+                : user.projectId;
+
+            if (projectToFilter) {
+                const { data: proj } = await supabase.from('projects').select('name').eq('id', projectToFilter).single();
                 if (proj) {
-                    empQuery = empQuery.or(`project.eq.${proj.name},project.eq.${user.projectId}`);
+                    empQuery = empQuery.or(`project.eq.${proj.name},project.eq.${projectToFilter}`);
                 } else {
-                    empQuery = empQuery.eq('project', user.projectId);
+                    empQuery = empQuery.eq('project', projectToFilter);
                 }
             }
             const { data: empData } = await empQuery;
@@ -54,7 +60,7 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user }) => {
 
             // Fetch KPIs for selected month
             let kpiQuery = supabase.from('hr_kpis').select('*').eq('month', selectedMonth);
-            if (user.role === 'project_manager' && user.projectId) {
+            if (projectToFilter) {
                 const empIds = empData?.map(e => e.id) || [];
                 kpiQuery = kpiQuery.in('employee_id', empIds);
             }

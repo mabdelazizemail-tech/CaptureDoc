@@ -538,9 +538,11 @@ export const StorageService = {
         // Manually fetch related assets and profiles due to missing foreign keys in DB
         const assetIds = [...new Set(data.map((t: any) => t.assetid).filter(Boolean))];
         const profileIds = [...new Set(data.map((t: any) => t.created_by).filter(Boolean))];
+        const projectIds = [...new Set(data.map((t: any) => t.projectid).filter(Boolean))];
 
         let assetsMap: Record<string, string> = {};
         let profilesMap: Record<string, string> = {};
+        let projectsMap: Record<string, string> = {};
 
         if (assetIds.length > 0) {
             const { data: assetsData } = await supabase.from('assets').select('id, name').in('id', assetIds);
@@ -550,9 +552,16 @@ export const StorageService = {
         }
 
         if (profileIds.length > 0) {
-            const { data: profilesData } = await supabase.from('profiles').select('id, name').in('id', profileIds);
+            const { data: profilesData } = await supabase.from('profiles').select('id, name').in('id', profileIds as string[]);
             if (profilesData) {
                 profilesData.forEach((p: any) => { profilesMap[p.id] = p.name; });
+            }
+        }
+
+        if (projectIds.length > 0) {
+            const { data: projectsData } = await supabase.from('projects').select('id, name').in('id', projectIds as string[]);
+            if (projectsData) {
+                projectsData.forEach((p: any) => { projectsMap[p.id] = p.name; });
             }
         }
 
@@ -569,7 +578,7 @@ export const StorageService = {
             creatorName: profilesMap[t.created_by] || 'Unknown',
             pmId: t.pmid || t.pm_id,
             projectId: t.projectid,
-            projectName: 'Unknown',
+            projectName: projectsMap[t.projectid] || 'Unknown',
             createdAt: t.createdat,
             solvedAt: t.solvedat,
             closedAt: t.closedat,

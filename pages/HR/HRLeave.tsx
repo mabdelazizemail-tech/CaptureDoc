@@ -28,9 +28,10 @@ interface LeaveRequest {
 
 interface HRLeaveProps {
     user: User;
+    selectedProjectId: string;
 }
 
-const HRLeave: React.FC<HRLeaveProps> = ({ user }) => {
+const HRLeave: React.FC<HRLeaveProps> = ({ user, selectedProjectId }) => {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
     const [loading, setLoading] = useState(true);
@@ -48,30 +49,53 @@ const HRLeave: React.FC<HRLeaveProps> = ({ user }) => {
 
     useEffect(() => {
         fetchData();
-    }, []);
+    }, [selectedProjectId]);
 
     const fetchData = async () => {
         setLoading(true);
         try {
-            // Fetch active employees for the dropdown
-            const { data: empData } = await supabase
-                .from('hr_employees')
+            let empQuery = supabase.from('hr_employees')
                 .select('id, full_name, annual_leave_balance, status')
-                .eq('status', 'active')
-                .order('full_name');
+                .eq('status', 'active');
+
+            const projectToFilter = (user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'it_specialist' || user.role === 'hr_admin')
+                ? (selectedProjectId !== 'all' ? selectedProjectId : null)
+                : user.projectId;
+
+            if (projectToFilter) {
+                const { data: proj } = await supabase.from('projects').select('name').eq('id', projectToFilter).single();
+                if (proj) {
+                    empQuery = empQuery.or(`project.eq.${proj.name},project.eq.${projectToFilter}`);
+                } else {
+                    empQuery = empQuery.eq('project', projectToFilter);
+                }
+            }
+
+            const { data: empData } = await empQuery.order('full_name');
             if (empData) setEmployees(empData);
 
             // Fetch leave requests
-            const { data: leaveData } = await supabase
-                .from('hr_leave_requests')
+            let leaveQuery = supabase.from('hr_leave_requests')
                 .select(`
                     *,
-                    hr_employees (
+                    hr_employees!inner (
                         full_name,
-                        annual_leave_balance
+                        annual_leave_balance,
+                        project
                     )
-                `)
-                .order('created_at', { ascending: false });
+                `);
+
+            if (projectToFilter) {
+                // To filter by project implicitly via hr_employees
+                const { data: proj } = await supabase.from('projects').select('name').eq('id', projectToFilter).single();
+                if (proj) {
+                    leaveQuery = leaveQuery.or(`project.eq.${proj.name},project.eq.${projectToFilter}`, { foreignTable: 'hr_employees' });
+                } else {
+                    leaveQuery = leaveQuery.eq('hr_employees.project', projectToFilter);
+                }
+            }
+
+            const { data: leaveData } = await leaveQuery.order('created_at', { ascending: false });
             if (leaveData) setLeaveRequests(leaveData as any);
         } catch (error) {
             console.error('Error fetching data:', error);

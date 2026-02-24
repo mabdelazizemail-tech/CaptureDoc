@@ -15,9 +15,10 @@ interface Holiday {
 
 interface HRHolidaysProps {
     user: User;
+    selectedProjectId: string;
 }
 
-const HRHolidays: React.FC<HRHolidaysProps> = ({ user }) => {
+const HRHolidays: React.FC<HRHolidaysProps> = ({ user, selectedProjectId }) => {
     const [holidays, setHolidays] = useState<Holiday[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
