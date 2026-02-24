@@ -206,6 +206,19 @@ const AssetDashboard: React.FC<AssetDashboardProps> = ({ user }) => {
         e.preventDefault();
         if (!selectedAsset || !selectedAsset.projectId) return;
         setSubmitStatus('sending');
+
+        // 1. Create a Support Ticket
+        const ticketResult = await StorageService.createTicket({
+            title: `صيانة: ${selectedAsset.name}`,
+            category: 'hardware',
+            description: requestForm.description,
+            priority: requestForm.priority,
+            assetId: selectedAsset.id,
+            projectId: selectedAsset.projectId,
+            createdBy: user.id
+        });
+
+        // 2. Create the legacy Maintenance Request (for KPI/dashboard aggregates)
         const request: MaintenanceRequest = {
             assetId: selectedAsset.id,
             supervisorId: user.id,
@@ -216,7 +229,8 @@ const AssetDashboard: React.FC<AssetDashboardProps> = ({ user }) => {
             createdAt: new Date().toISOString()
         };
         const result = await StorageService.createMaintenanceRequest(request);
-        if (result.success) {
+
+        if (ticketResult.success && result.success) {
             setSubmitStatus('success');
             if (request.priority === 'high' || request.priority === 'critical') {
                 fetchAssets();
@@ -227,7 +241,7 @@ const AssetDashboard: React.FC<AssetDashboardProps> = ({ user }) => {
             }, 1500);
         } else {
             setSubmitStatus('error');
-            showToast(`Error: ${result.error}`, 'error');
+            showToast(`Error: ${ticketResult.error || result.error}`, 'error');
         }
     };
 

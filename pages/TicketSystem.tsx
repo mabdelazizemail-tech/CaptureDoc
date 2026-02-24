@@ -618,10 +618,10 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
             {/* Create Ticket Modal */}
             {showCreateModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 animate-fade-in-up">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 animate-fade-in-up max-h-[90vh] overflow-y-auto">
                         <div className="flex justify-between items-center mb-6 border-b pb-2">
                             <h3 className="font-bold text-lg text-gray-800">إنشاء تذكرة جديدة</h3>
-                            <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-red-500"><span className="material-icons">close</span></button>
+                            <button type="button" onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-red-500"><span className="material-icons">close</span></button>
                         </div>
                         <form onSubmit={handleCreateTicket} className="space-y-4">
                             <div>
