@@ -24,9 +24,10 @@ import { User } from '../../services/types';
 
 interface HRAttendanceProps {
     user: User;
+    selectedProjectId: string;
 }
 
-const HRAttendance: React.FC<HRAttendanceProps> = ({ user }) => {
+const HRAttendance: React.FC<HRAttendanceProps> = ({ user, selectedProjectId }) => {
     const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [loading, setLoading] = useState(true);
@@ -36,19 +37,24 @@ const HRAttendance: React.FC<HRAttendanceProps> = ({ user }) => {
 
     useEffect(() => {
         fetchData();
-    }, [selectedDate]);
+    }, [selectedDate, selectedProjectId]);
 
     const fetchData = async () => {
         setLoading(true);
         try {
             // Fetch active employees
             let empQuery = supabase.from('hr_employees').select('id, full_name, employee_code, email').eq('status', 'active');
-            if (user.role === 'project_manager' && user.projectId) {
-                const { data: proj } = await supabase.from('projects').select('name').eq('id', user.projectId).single();
+
+            const projectToFilter = (user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'it_specialist' || user.role === 'hr_admin')
+                ? (selectedProjectId !== 'all' ? selectedProjectId : null)
+                : user.projectId;
+
+            if (projectToFilter) {
+                const { data: proj } = await supabase.from('projects').select('name').eq('id', projectToFilter).single();
                 if (proj) {
-                    empQuery = empQuery.or(`project.eq.${proj.name},project.eq.${user.projectId}`);
+                    empQuery = empQuery.or(`project.eq.${proj.name},project.eq.${projectToFilter}`);
                 } else {
-                    empQuery = empQuery.eq('project', user.projectId);
+                    empQuery = empQuery.eq('project', projectToFilter);
                 }
             }
             const { data: empData } = await empQuery;
@@ -56,7 +62,7 @@ const HRAttendance: React.FC<HRAttendanceProps> = ({ user }) => {
 
             // Fetch attendance for selected date
             let attQuery = supabase.from('hr_attendance').select('*').eq('date', selectedDate);
-            if (user.role === 'project_manager' && user.projectId) {
+            if (projectToFilter) {
                 // We need to filter attendance records by employee project
                 const empIds = empData?.map(e => e.id) || [];
                 attQuery = attQuery.in('employee_id', empIds);

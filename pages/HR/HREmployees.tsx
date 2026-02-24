@@ -29,9 +29,10 @@ import { User } from '../../services/types';
 
 interface HREmployeesProps {
     user: User;
+    selectedProjectId: string;
 }
 
-const HREmployees: React.FC<HREmployeesProps> = ({ user }) => {
+const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) => {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
@@ -44,7 +45,7 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user }) => {
     useEffect(() => {
         fetchEmployees();
         fetchProjects();
-    }, []);
+    }, [selectedProjectId]);
 
     const fetchProjects = async () => {
         const { data } = await supabase.from('projects').select('id, name');
@@ -55,14 +56,16 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user }) => {
         setLoading(true);
         let query = supabase.from('hr_employees').select('*');
 
-        // Filter by project for managers
-        if (user.role === 'project_manager' && user.projectId) {
-            // Find project name to match with the text column
-            const { data: proj } = await supabase.from('projects').select('name').eq('id', user.projectId).single();
+        const projectToFilter = (user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'it_specialist' || user.role === 'hr_admin')
+            ? (selectedProjectId !== 'all' ? selectedProjectId : null)
+            : user.projectId;
+
+        if (projectToFilter) {
+            const { data: proj } = await supabase.from('projects').select('name').eq('id', projectToFilter).single();
             if (proj) {
-                query = query.or(`project.eq.${proj.name},project.eq.${user.projectId}`);
+                query = query.or(`project.eq.${proj.name},project.eq.${projectToFilter}`);
             } else {
-                query = query.eq('project', user.projectId);
+                query = query.eq('project', projectToFilter);
             }
         }
 
@@ -142,13 +145,29 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user }) => {
 
             let successCount = 0;
             let errorCount = 0;
+            let errorMessages: string[] = [];
 
             for (const row of jsonData) {
                 const basic = parseFloat(row.basic_salary) || 0;
                 if (basic <= 0 || !row.full_name || !row.email || !row.hire_date) {
                     errorCount++;
+                    errorMessages.push(`صف الموظف (${row.full_name || 'بدون اسم'}): يجب ادخال (الاسم الرباعي، البريد الالكتروني، تاريخ التعيين، الراتب الاساسي)`);
                     continue;
                 }
+
+                // Safe Status parsing
+                let parsedStatus = 'active';
+                const rawStatus = String(row.status || '').trim().toLowerCase();
+                if (rawStatus === 'inactive' || rawStatus === 'غير نشط') {
+                    parsedStatus = 'inactive';
+                }
+
+                // Safe Gender parsing
+                let parsedGender = null;
+                const rawGender = String(row.gender || '').trim().toLowerCase();
+                if (rawGender === 'male' || rawGender === 'ذكر') parsedGender = 'male';
+                else if (rawGender === 'female' || rawGender === 'أنثى') parsedGender = 'female';
+                else if (rawGender === 'other') parsedGender = 'other';
 
                 const { error } = await supabase.rpc('hr_update_employee', {
                     p_id: null,
@@ -161,7 +180,7 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user }) => {
                     p_insurance_number: row.insurance_number ? String(row.insurance_number) : null,
                     p_insurance_date: row.insurance_date ? new Date(row.insurance_date).toISOString().split('T')[0] : null,
                     p_insurance_salary: parseFloat(row.insurance_salary) || 0,
-                    p_gender: row.gender || null,
+                    p_gender: parsedGender,
                     p_date_of_birth: row.date_of_birth ? new Date(row.date_of_birth).toISOString().split('T')[0] : null,
                     p_education: row.education || null,
                     p_hire_date: new Date(row.hire_date).toISOString().split('T')[0],
@@ -170,18 +189,26 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user }) => {
                     p_project: row.project || null,
                     p_basic_salary: basic,
                     p_variable_salary: parseFloat(row.variable_salary) || 0,
-                    p_status: row.status || 'active'
+                    p_status: parsedStatus
                 });
 
                 if (error) {
                     console.error("Error inserting row", row, error);
                     errorCount++;
+                    errorMessages.push(`الموظف (${row.full_name}): ${error.message}`);
                 } else {
                     successCount++;
                 }
             }
 
-            alert(`تم الانتهاء: نجاح (${successCount}) موظف، فشل (${errorCount})`);
+            let alertMsg = `تم الانتهاء: نجاح (${successCount}) موظف، فشل (${errorCount})`;
+            if (errorMessages.length > 0) {
+                alertMsg += `\n\nأسباب الفشل:\n${errorMessages.slice(0, 10).join('\n')}`;
+                if (errorMessages.length > 10) {
+                    alertMsg += `\n... والمزيد (${errorMessages.length - 10} أخطاء أخرى)`;
+                }
+            }
+            alert(alertMsg);
             fetchEmployees();
         } catch (err: any) {
             alert("حدث خطأ أثناء رفع الملف: " + err.message);

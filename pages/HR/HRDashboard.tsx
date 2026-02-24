@@ -6,6 +6,7 @@ import HRAttendance from './HRAttendance';
 import HRKPIs from './HRKPIs';
 import HRHolidays from './HRHolidays';
 import HRLeave from './HRLeave';
+import HRPayroll from './HRPayroll';
 
 interface HRDashboardProps {
     user: User;
@@ -198,31 +199,27 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
             )}
 
             {activeTab === 'employees' && (
-                <HREmployees user={user} />
+                <HREmployees user={user} selectedProjectId={selectedProjectId} />
             )}
 
             {activeTab === 'attendance' && (
-                <HRAttendance user={user} />
+                <HRAttendance user={user} selectedProjectId={selectedProjectId} />
             )}
 
             {activeTab === 'leave' && (
-                <HRLeave user={user} />
+                <HRLeave user={user} selectedProjectId={selectedProjectId} />
             )}
 
             {activeTab === 'kpi' && (
-                <HRKPIs user={user} />
+                <HRKPIs user={user} selectedProjectId={selectedProjectId} />
             )}
 
             {activeTab === 'holidays' && (
-                <HRHolidays user={user} />
+                <HRHolidays user={user} selectedProjectId={selectedProjectId} />
             )}
 
             {activeTab === 'payroll' && (
-                <div className="mt-8 bg-white border border-gray-100 shadow-sm rounded-xl p-8 text-center text-gray-400">
-                    <span className="material-icons text-6xl opacity-20 mb-4 block">engineering</span>
-                    <p className="font-bold text-lg mb-2">جاري العمل على استكمال الواجهات...</p>
-                    <p className="text-sm">هذه الشاشة تحت التطوير وسيتم توفيرها قريباً.</p>
-                </div>
+                <HRPayroll user={user} selectedProjectId={selectedProjectId} />
             )}
 
         </div>
