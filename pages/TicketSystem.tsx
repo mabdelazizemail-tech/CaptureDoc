@@ -278,6 +278,43 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
         }
     };
 
+    const renderDescription = (description: string, category: string, isSmall = false) => {
+        if (category === 'tools' && description.includes('العدد:')) {
+            const lines = description.split('\n');
+            return (
+                <div className="mt-2 text-xs border rounded-lg overflow-hidden border-gray-100 bg-gray-50 mb-3">
+                    <table className="w-full text-right">
+                        <thead className="bg-gray-100/50 border-b border-gray-100">
+                            <tr>
+                                <th className="p-1.5 w-12 text-gray-500">العدد</th>
+                                <th className="p-1.5 text-gray-500">الوصف</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {lines.map((line, idx) => {
+                                const match = line.match(/العدد:\s*(\d+)\s*\|\s*الوصف:\s*(.*)/);
+                                if (match) {
+                                    return (
+                                        <tr key={idx}>
+                                            <td className="p-1.5 font-bold text-gray-700">{match[1]}</td>
+                                            <td className="p-1.5 text-gray-600">{match[2]}</td>
+                                        </tr>
+                                    );
+                                }
+                                return (
+                                    <tr key={idx}>
+                                        <td colSpan={2} className="p-1.5 text-gray-600">{line}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        }
+        return <p className={`text-gray-600 ${isSmall ? 'text-xs mb-3 line-clamp-2' : 'text-sm mb-2 whitespace-pre-wrap'}`}>{description}</p>;
+    };
+
     const renderCreatorView = () => {
         const myOpenTickets = tickets.filter(t => t.status !== 'closed');
         const ticketsToVerify = tickets.filter(t => t.status === 'solved');
@@ -329,7 +366,7 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                     <span className={`px-2 py-0.5 rounded text-xs font-bold ${getStatusColor(t.status)}`}>{getStatusLabel(t.status)}</span>
                                     <span className="font-bold text-gray-800 text-lg">{t.title}</span>
                                 </div>
-                                <p className="text-gray-600 text-sm mb-2">{t.description}</p>
+                                {renderDescription(t.description, t.category)}
                                 <div className="flex gap-4 text-xs text-gray-400">
                                     <span className="flex items-center gap-1"><span className="material-icons text-xs">category</span> {t.category}</span>
                                     <span className="flex items-center gap-1"><span className="material-icons text-xs">inventory_2</span> {t.assetName || 'بدون أصل'}</span>
@@ -403,7 +440,7 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                         <span className="font-bold text-gray-800">{t.title}</span>
                                         <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${t.priority === 'critical' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600'}`}>{t.priority}</span>
                                     </div>
-                                    <p className="text-xs text-gray-600 mb-3 line-clamp-2">{t.description}</p>
+                                    {renderDescription(t.description, t.category, true)}
                                     <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-50">
                                         <div className="text-[10px] text-gray-400 flex items-center gap-1">
                                             <span className="material-icons text-[12px]">person</span>
