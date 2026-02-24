@@ -63,6 +63,9 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
         priority: 'medium'
     });
 
+    // Sub-items for ordering tools
+    const [toolsItems, setToolsItems] = useState<{ qty: number; desc: string }[]>([{ qty: 1, desc: '' }]);
+
     // Metrics for Admin
     const [metrics, setMetrics] = useState({
         avgTime: '0h',
@@ -128,6 +131,16 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
     const handleCreateTicket = async (e: React.FormEvent) => {
         e.preventDefault();
 
+        let finalDescription = newTicket.description;
+        if (newTicket.category === 'tools') {
+            const validItems = toolsItems.filter(item => item.desc.trim() !== '');
+            if (validItems.length === 0) {
+                showToast('يرجى إدخال أدوات ومستلزمات', 'error');
+                return;
+            }
+            finalDescription = validItems.map(item => `العدد: ${item.qty} | الوصف: ${item.desc}`).join('\n');
+        }
+
         const projectIdToUse = user.role === 'project_manager' ? newTicket.projectId : user.projectId;
 
         if (!projectIdToUse) {
@@ -137,6 +150,7 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
 
         const result = await StorageService.createTicket({
             ...newTicket,
+            description: finalDescription,
             createdBy: user.id,
             projectId: projectIdToUse
         });
@@ -144,6 +158,7 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
         if (result.success) {
             setShowCreateModal(false);
             setNewTicket({ ...newTicket, title: '', category: 'hardware', assetId: '', description: '', priority: 'medium' });
+            setToolsItems([{ qty: 1, desc: '' }]);
             showToast('تم إنشاء التذكرة بنجاح');
             loadData();
         } else {
@@ -653,16 +668,67 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                 </select>
                             </div>
 
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1">التفاصيل</label>
-                                <textarea
-                                    className="w-full p-3 bg-gray-50 border rounded-lg h-24"
-                                    value={newTicket.description}
-                                    onChange={e => setNewTicket({ ...newTicket, description: e.target.value })}
-                                    required
-                                    placeholder="وصف دقيق للمشكلة..."
-                                ></textarea>
-                            </div>
+                            {newTicket.category === 'tools' ? (
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-2">الأدوات المطلوبة</label>
+                                    <div className="border rounded-lg overflow-hidden border-gray-200">
+                                        <table className="w-full text-sm text-right">
+                                            <thead className="bg-gray-50 border-b">
+                                                <tr>
+                                                    <th className="p-2 w-20">عدد</th>
+                                                    <th className="p-2">وصف</th>
+                                                    <th className="p-2 w-10"></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {toolsItems.map((item, idx) => (
+                                                    <tr key={idx} className="border-b last:border-b-0">
+                                                        <td className="p-2">
+                                                            <input type="number" min="1" className="w-full p-2 border rounded-md outline-none focus:ring-1 focus:ring-primary" value={item.qty} onChange={e => {
+                                                                const newItems = [...toolsItems];
+                                                                newItems[idx].qty = Number(e.target.value);
+                                                                setToolsItems(newItems);
+                                                            }} />
+                                                        </td>
+                                                        <td className="p-2">
+                                                            <input type="text" className="w-full p-2 border rounded-md outline-none focus:ring-1 focus:ring-primary" placeholder="وصف الأداة..." value={item.desc} onChange={e => {
+                                                                const newItems = [...toolsItems];
+                                                                newItems[idx].desc = e.target.value;
+                                                                setToolsItems(newItems);
+                                                            }} />
+                                                        </td>
+                                                        <td className="p-2 text-center">
+                                                            {idx > 0 && (
+                                                                <button type="button" onClick={() => {
+                                                                    const newItems = [...toolsItems];
+                                                                    newItems.splice(idx, 1);
+                                                                    setToolsItems(newItems);
+                                                                }} className="text-red-500 hover:text-red-700 mt-1">
+                                                                    <span className="material-icons text-sm">delete</span>
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                        <button type="button" onClick={() => setToolsItems([...toolsItems, { qty: 1, desc: '' }])} className="w-full p-2 bg-gray-50 text-blue-600 font-bold hover:bg-gray-100 flex justify-center items-center gap-1 border-t border-gray-200">
+                                            <span className="material-icons text-sm">add</span> إضافة
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">التفاصيل</label>
+                                    <textarea
+                                        className="w-full p-3 bg-gray-50 border rounded-lg h-24"
+                                        value={newTicket.description}
+                                        onChange={e => setNewTicket({ ...newTicket, description: e.target.value })}
+                                        required
+                                        placeholder="وصف دقيق للمشكلة..."
+                                    ></textarea>
+                                </div>
+                            )}
 
                             <button
                                 type="submit"
