@@ -846,7 +846,7 @@ const AssetDashboard: React.FC<AssetDashboardProps> = ({ user }) => {
                             const isFaulty = asset.status === 'faulty' || asset.status === 'maintenance';
                             return (
                                 <div key={asset.id} className={`bg-white rounded-xl shadow-sm border overflow-hidden transition-all hover:shadow-md relative group ${isFaulty ? 'border-red-100' : 'border-gray-100'}`}>
-                                    {canManageAssets && (
+                                    {(isItSpecialist || isSuperAdmin) && (
                                         <button onClick={() => openEditAssetModal(asset)} className="absolute top-3 left-3 p-1.5 rounded-full bg-white text-gray-400 hover:text-blue-600 hover:bg-blue-50 border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity z-10"><span className="material-icons text-sm">edit</span></button>
                                     )}
                                     <div className={`h-1.5 w-full ${asset.status === 'operational' || asset.status === 'in_use' ? 'bg-green-500' : asset.status === 'in_storage' ? 'bg-blue-500' : asset.status === 'faulty' ? 'bg-red-500' : asset.status === 'retired' ? 'bg-gray-400' : 'bg-orange-500'}`}></div>

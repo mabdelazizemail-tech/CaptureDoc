@@ -5,6 +5,7 @@ import { StorageService } from '../services/storage';
 import { supabase } from '../services/supabaseClient';
 import Toast from '../components/Toast';
 import ConfirmationModal from '../components/ConfirmationModal';
+import * as XLSX from 'xlsx';
 
 interface TicketSystemProps {
     user: User;
@@ -258,6 +259,56 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
         }
     };
 
+    const exportToolsToExcel = (ticket: Ticket) => {
+        if (ticket.category !== 'tools') {
+            showToast('لا يمكن تصدير سوى تذاكر الأدوات', 'info');
+            return;
+        }
+
+        const lines = ticket.description.split('\n');
+        const toolsRows = lines.map((line, idx) => {
+            const match = line.match(/العدد:\s*(\d+)\s*\|\s*الوصف:\s*(.*)/);
+            if (match) {
+                return [idx + 1, Number(match[1]), match[2]];
+            }
+            return [idx + 1, '-', line];
+        });
+
+        const data: any[][] = [
+            ['نموذج طلب أدوات / مستلزمات بمسار', ''],
+            [''],
+            ['رقم التذكرة:', ticket.id.substring(0, 8).toUpperCase()],
+            ['عنوان التذكرة:', ticket.title],
+            ['المشروع:', ticket.projectName || 'غير محدد'],
+            ['المنشئ:', ticket.creatorName || 'غير محدد'],
+            ['تاريخ الطلب:', new Date(ticket.createdAt).toLocaleDateString('ar-EG')],
+            ['الحالة:', getStatusLabel(ticket.status)],
+            ['الأولوية:', ticket.priority],
+            [''],
+            ['جدول الأدوات (Tools Details):'],
+            ['م', 'الكمية', 'الوصف'],
+            ...toolsRows,
+            [''],
+            ['التكلفة الإجمالية (EGP):', ticket.cost ? `${ticket.cost} EGP` : '0 EGP'],
+            [''],
+            ['توقيع المشرف:', '.........................', 'توقيع الإدارة (IT/PM):', '.........................']
+        ];
+
+        const worksheet = XLSX.utils.aoa_to_sheet(data);
+
+        // Basic Column Width Settings
+        worksheet['!cols'] = [
+            { wch: 25 }, // Col A 
+            { wch: 20 }, // Col B 
+            { wch: 50 }, // Col C 
+            { wch: 25 }, // Col D 
+        ];
+
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Tools_Order');
+        XLSX.writeFile(workbook, `Tools_Order_${ticket.id.substring(0, 5)}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    };
+
     const getStatusColor = (status: string) => {
         switch (status) {
             case 'open': return 'bg-red-100 text-red-700';
@@ -504,16 +555,18 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                             <span className="material-icons text-gray-500">list_alt</span>
                             <span className="font-bold text-gray-700">سجل التذاكر التفصيلي</span>
                         </div>
-                        {isSuperAdmin && selectedTickets.length > 0 && (
-                            <div className="flex gap-2 animate-fade-in">
-                                <button onClick={handleBulkOpen} className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-700 flex items-center gap-1">
-                                    <span className="material-icons text-sm">refresh</span> إعادة فتح ({selectedTickets.length})
-                                </button>
-                                <button onClick={handleBulkDelete} className="bg-red-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-red-700 flex items-center gap-1">
-                                    <span className="material-icons text-sm">delete</span> حذف نهائي ({selectedTickets.length})
-                                </button>
-                            </div>
-                        )}
+                        <div className="flex gap-2 animate-fade-in">
+                            {isSuperAdmin && selectedTickets.length > 0 && (
+                                <>
+                                    <button onClick={handleBulkOpen} className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-700 flex items-center gap-1 shadow-sm">
+                                        <span className="material-icons text-sm">refresh</span> إعادة فتح ({selectedTickets.length})
+                                    </button>
+                                    <button onClick={handleBulkDelete} className="bg-red-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-red-700 flex items-center gap-1 shadow-sm">
+                                        <span className="material-icons text-sm">delete</span> حذف نهائي ({selectedTickets.length})
+                                    </button>
+                                </>
+                            )}
+                        </div>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-right text-sm">
@@ -567,7 +620,7 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                         <td className="p-4 font-mono text-xs text-gray-400">
                                             {new Date(t.createdAt).toLocaleDateString()}
                                         </td>
-                                        <td className="p-4">
+                                        <td className="p-4 flex gap-1 items-center justify-end">
                                             {(isSuperAdmin || user.role === 'it_specialist') ? (
                                                 <button
                                                     onClick={() => setEditModal({ isOpen: true, ticket: t })}
@@ -582,6 +635,15 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                                     className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg"
                                                 >
                                                     <span className="material-icons text-sm">visibility</span>
+                                                </button>
+                                            )}
+                                            {t.category === 'tools' && (isSuperAdmin || user.role === 'it_specialist' || user.role === 'hr_admin') && (
+                                                <button
+                                                    onClick={() => exportToolsToExcel(t)}
+                                                    className="p-1.5 text-green-500 hover:bg-green-50 rounded-lg transition-colors"
+                                                    title="تصدير Excel"
+                                                >
+                                                    <span className="material-icons text-sm">download</span>
                                                 </button>
                                             )}
                                         </td>
