@@ -22,6 +22,7 @@ interface Employee {
     project: string;
     basic_salary: number;
     variable_salary: number;
+    target_volume: number;
     status: string;
 }
 
@@ -120,6 +121,7 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
             p_project: editingEmp.project || null,
             p_basic_salary: basic,
             p_variable_salary: variable,
+            p_target_volume: parseInt((editingEmp.target_volume as unknown as string) || '0'),
             p_status: editingEmp.status || 'active'
         });
 
@@ -189,6 +191,7 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
                     p_project: row.project || null,
                     p_basic_salary: basic,
                     p_variable_salary: parseFloat(row.variable_salary) || 0,
+                    p_target_volume: parseInt(row.target_volume) || 0,
                     p_status: parsedStatus
                 });
 
@@ -223,7 +226,7 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
             'full_name', 'email', 'phone', 'national_id', 'employee_code',
             'address', 'insurance_number', 'insurance_date', 'insurance_salary',
             'gender', 'date_of_birth', 'education', 'hire_date', 'job_title',
-            'department', 'project', 'basic_salary', 'variable_salary', 'status'
+            'department', 'project', 'basic_salary', 'variable_salary', 'target_volume', 'status'
         ];
         // Create an empty worksheet with just the headers
         const worksheet = XLSX.utils.aoa_to_sheet([headers]);
@@ -478,8 +481,12 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
                                     <input required min="1" type="number" step="0.01" className="w-full border rounded p-2" value={editingEmp.basic_salary || ''} onChange={e => setEditingEmp({ ...editingEmp, basic_salary: parseFloat(e.target.value) })} />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">البدلات (المتغير)</label>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">الراتب المتغير</label>
                                     <input type="number" step="0.01" className="w-full border rounded p-2" value={editingEmp.variable_salary || ''} onChange={e => setEditingEmp({ ...editingEmp, variable_salary: parseFloat(e.target.value) })} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">الحجم المستهدف المتعاقد عليه</label>
+                                    <input type="number" step="1" className="w-full border rounded p-2" value={editingEmp.target_volume || ''} onChange={e => setEditingEmp({ ...editingEmp, target_volume: parseInt(e.target.value) })} />
                                 </div>
                             </div>
 

@@ -2,10 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User } from '../../services/types';
 import { supabase } from '../../services/supabaseClient';
 import HREmployees from './HREmployees';
-import HRAttendance from './HRAttendance';
 import HRKPIs from './HRKPIs';
-import HRHolidays from './HRHolidays';
-import HRLeave from './HRLeave';
 import HRPayroll from './HRPayroll';
 
 interface HRDashboardProps {
@@ -88,26 +85,14 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
                     <span className="material-icons text-[18px]">badge</span>
                     إدارة الموظفين
                 </button>
-                <button
-                    onClick={() => setActiveTab('attendance')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'attendance' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-                >
-                    <span className="material-icons text-[18px]">how_to_reg</span>
-                    الحضور والغياب
-                </button>
-                <button
-                    onClick={() => setActiveTab('leave')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'leave' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-                >
-                    <span className="material-icons text-[18px]">flight_takeoff</span>
-                    الاجازات
-                </button>
+
+
                 <button
                     onClick={() => setActiveTab('payroll')}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'payroll' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
                 >
                     <span className="material-icons text-[18px]">payments</span>
-                    نظام الرواتب
+                    الرواتب والمؤثرات
                 </button>
                 <button
                     onClick={() => setActiveTab('kpi')}
@@ -115,13 +100,6 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
                 >
                     <span className="material-icons text-[18px]">analytics</span>
                     تقييم الأداء (KPIs)
-                </button>
-                <button
-                    onClick={() => setActiveTab('holidays')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'holidays' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-                >
-                    <span className="material-icons text-[18px]">event</span>
-                    العطلات
                 </button>
             </div>
 
@@ -202,20 +180,9 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
                 <HREmployees user={user} selectedProjectId={selectedProjectId} />
             )}
 
-            {activeTab === 'attendance' && (
-                <HRAttendance user={user} selectedProjectId={selectedProjectId} />
-            )}
-
-            {activeTab === 'leave' && (
-                <HRLeave user={user} selectedProjectId={selectedProjectId} />
-            )}
 
             {activeTab === 'kpi' && (
                 <HRKPIs user={user} selectedProjectId={selectedProjectId} />
-            )}
-
-            {activeTab === 'holidays' && (
-                <HRHolidays user={user} selectedProjectId={selectedProjectId} />
             )}
 
             {activeTab === 'payroll' && (

@@ -12,6 +12,13 @@ interface KPIEntry {
     notes: string;
 }
 
+interface ProjectKPI {
+    project_id: string;
+    project_name: string;
+    month: string;
+    volume: number;
+}
+
 interface Employee {
     id: string;
     full_name: string;
@@ -29,6 +36,7 @@ interface HRKPIsProps {
 const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [kpiData, setKpiData] = useState<KPIEntry[]>([]);
+    const [projectKpiData, setProjectKpiData] = useState<ProjectKPI[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [isSaving, setIsSaving] = useState(false);
@@ -82,6 +90,32 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
             });
 
             setKpiData(merged);
+
+            // Fetch projects
+            let projQuery = supabase.from('projects').select('id, name');
+            if (projectToFilter && projectToFilter !== 'all') {
+                projQuery = projQuery.eq('id', projectToFilter);
+            }
+            const { data: projData } = await projQuery;
+
+            // Fetch project KPIs for the month
+            let projKpiQuery = supabase.from('hr_project_kpis').select('*').eq('month', selectedMonth);
+            if (projectToFilter && projectToFilter !== 'all') {
+                projKpiQuery = projKpiQuery.eq('project_id', projectToFilter);
+            }
+            const { data: projKpiRecords } = await projKpiQuery;
+
+            const mergedProjects = (projData || []).map(p => {
+                const record = projKpiRecords?.find(r => r.project_id === p.id);
+                return {
+                    project_id: p.id,
+                    project_name: p.name,
+                    month: selectedMonth,
+                    volume: record?.volume || 0
+                };
+            });
+            setProjectKpiData(mergedProjects);
+
         } catch (error) {
             console.error("Error fetching KPIs:", error);
         } finally {
@@ -111,9 +145,19 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
                 notes: rec.notes
             }));
 
-            const { error } = await supabase.from('hr_kpis').upsert(updates, { onConflict: 'employee_id,month' });
+            const projUpdates = projectKpiData.map(p => ({
+                project_id: p.project_id,
+                month: p.month,
+                volume: p.volume
+            }));
 
-            if (error) throw error;
+            const { error: kpiError } = await supabase.from('hr_kpis').upsert(updates, { onConflict: 'employee_id,month' });
+            if (kpiError) throw kpiError;
+
+            if (projUpdates.length > 0) {
+                const { error: projError } = await supabase.from('hr_project_kpis').upsert(projUpdates, { onConflict: 'project_id,month' });
+                if (projError) throw projError;
+            }
             alert('تم حفظ تقييمات الأداء بنجاح');
             fetchData();
         } catch (error: any) {
@@ -193,6 +237,31 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
                             ))}
                         </div>
                     </div>
+
+                    <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+                        <h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2 text-sm">
+                            <span className="material-icons text-blue-500">assignment</span>
+                            حجم العمل للمشاريع
+                        </h4>
+                        <div className="space-y-4">
+                            {projectKpiData.map(p => (
+                                <div key={p.project_id} className="flex flex-col gap-1">
+                                    <div className="text-sm font-medium text-gray-700">{p.project_name}</div>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value={p.volume || ''}
+                                        onChange={(e) => setProjectKpiData(prev => prev.map(rec => rec.project_id === p.project_id ? { ...rec, volume: parseInt(e.target.value) || 0 } : rec))}
+                                        className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary outline-none"
+                                        placeholder="حجم العمل"
+                                    />
+                                </div>
+                            ))}
+                            {projectKpiData.length === 0 && (
+                                <div className="text-xs text-center text-gray-400">لا توجد مشاريع مخصصة</div>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
                 {/* KPI Input Table */}
@@ -207,7 +276,7 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
                                         <th className="p-4 font-bold">الموظف</th>
                                         <th className="p-4 font-bold text-center">الإنتاجية</th>
                                         <th className="p-4 font-bold text-center">الجودة</th>
-                                        <th className="p-4 font-bold text-center">الحضور</th>
+                                        <th className="p-4 font-bold text-center">المظهر العام</th>
                                         <th className="p-4 font-bold text-center">الالتزام</th>
                                         <th className="p-4 font-bold text-center">المعدل</th>
                                     </tr>
