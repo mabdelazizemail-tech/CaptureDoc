@@ -77,9 +77,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
     // UI State
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
     const [showProjectModal, setShowProjectModal] = useState(false);
-    const [newProjectData, setNewProjectData] = useState({ name: '', location: '' });
+    const [newProjectData, setNewProjectData] = useState({ name: '', location: '', startDate: '', monthlyVolume: 0, clickCharge: 0 });
     const [showProjectSettingsModal, setShowProjectSettingsModal] = useState(false);
-    const [editProjectData, setEditProjectData] = useState({ name: '', location: '', pmId: '' });
+    const [editProjectData, setEditProjectData] = useState({ name: '', location: '', pmId: '', startDate: '', monthlyVolume: 0, clickCharge: 0 });
 
     // Bulk Upload State
     const [csvContent, setCsvContent] = useState('');
@@ -543,12 +543,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
     const handleCreateProject = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newProjectData.name || !newProjectData.location) return;
-        const proj = await StorageService.createProject(newProjectData.name, newProjectData.location);
+        const proj = await StorageService.createProject(
+            newProjectData.name,
+            newProjectData.location,
+            newProjectData.startDate,
+            newProjectData.monthlyVolume,
+            newProjectData.clickCharge
+        );
         if (proj) {
             setProjects([...projects, proj]);
             setCurrentProject(proj);
             setShowProjectModal(false);
-            setNewProjectData({ name: '', location: '' });
+            setNewProjectData({ name: '', location: '', startDate: '', monthlyVolume: 0, clickCharge: 0 });
             showToast('تم إنشاء المشروع بنجاح');
         } else {
             showToast("حدث خطأ أثناء إنشاء المشروع.", 'error');
@@ -558,7 +564,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
     const handleUpdateProject = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!currentProject || !editProjectData.name) return;
-        const success = await StorageService.updateProject(currentProject.id, editProjectData.name, editProjectData.location, editProjectData.pmId);
+        const success = await StorageService.updateProject(
+            currentProject.id,
+            editProjectData.name,
+            editProjectData.location,
+            editProjectData.pmId,
+            editProjectData.startDate,
+            editProjectData.monthlyVolume,
+            editProjectData.clickCharge
+        );
         if (success) {
             const updatedProj = { ...currentProject, ...editProjectData };
             setProjects(projects.map(p => p.id === currentProject.id ? updatedProj : p));
@@ -591,7 +605,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
 
     const openProjectSettings = () => {
         if (currentProject) {
-            setEditProjectData({ name: currentProject.name, location: currentProject.location, pmId: currentProject.pmId || '' });
+            setEditProjectData({
+                name: currentProject.name,
+                location: currentProject.location,
+                pmId: currentProject.pmId || '',
+                startDate: currentProject.startDate || '',
+                monthlyVolume: currentProject.monthlyVolume || 0,
+                clickCharge: currentProject.clickCharge || 0
+            });
             setShowProjectSettingsModal(true);
         }
     };
@@ -1150,8 +1171,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
                         <h3 className="text-xl font-bold mb-4">مشروع جديد</h3>
                         <form onSubmit={handleCreateProject} className="space-y-4">
-                            <input type="text" className="w-full p-3 bg-gray-50 border rounded-lg" required value={newProjectData.name} onChange={e => setNewProjectData({ ...newProjectData, name: e.target.value })} placeholder="اسم المشروع" />
-                            <input type="text" className="w-full p-3 bg-gray-50 border rounded-lg" required value={newProjectData.location} onChange={e => setNewProjectData({ ...newProjectData, location: e.target.value })} placeholder="الموقع" />
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">اسم المشروع</label>
+                                <input type="text" className="w-full p-3 bg-gray-50 border rounded-lg" required value={newProjectData.name} onChange={e => setNewProjectData({ ...newProjectData, name: e.target.value })} placeholder="اسم المشروع" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">الموقع</label>
+                                <input type="text" className="w-full p-3 bg-gray-50 border rounded-lg" required value={newProjectData.location} onChange={e => setNewProjectData({ ...newProjectData, location: e.target.value })} placeholder="الموقع" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">تاريخ البدء</label>
+                                <input type="date" className="w-full p-3 bg-gray-50 border rounded-lg" value={newProjectData.startDate} onChange={e => setNewProjectData({ ...newProjectData, startDate: e.target.value })} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">الحجم الشهري المستهدف</label>
+                                    <input type="number" step="1" className="w-full p-3 bg-gray-50 border rounded-lg" value={newProjectData.monthlyVolume} onChange={e => setNewProjectData({ ...newProjectData, monthlyVolume: parseInt(e.target.value) || 0 })} />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">سعر الوحدة (Click Charge)</label>
+                                    <input type="number" step="0.01" className="w-full p-3 bg-gray-50 border rounded-lg" value={newProjectData.clickCharge} onChange={e => setNewProjectData({ ...newProjectData, clickCharge: parseFloat(e.target.value) || 0 })} />
+                                </div>
+                            </div>
                             <button type="submit" className="w-full bg-primary text-white py-3 rounded-lg font-bold">إنشاء</button>
                         </form>
                         <button onClick={() => setShowProjectModal(false)} className="mt-4 text-gray-400 text-sm w-full text-center">إلغاء</button>
@@ -1185,6 +1226,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
                                         <option key={pm.id} value={pm.id}>{pm.name}</option>
                                     ))}
                                 </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">تاريخ البدء</label>
+                                <input type="date" className="w-full p-3 bg-gray-50 border rounded-lg" value={editProjectData.startDate} onChange={e => setEditProjectData({ ...editProjectData, startDate: e.target.value })} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">الحجم الشهري</label>
+                                    <input type="number" step="1" className="w-full p-3 bg-gray-50 border rounded-lg" value={editProjectData.monthlyVolume} onChange={e => setEditProjectData({ ...editProjectData, monthlyVolume: parseInt(e.target.value) || 0 })} />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">سعر الوحدة</label>
+                                    <input type="number" step="0.01" className="w-full p-3 bg-gray-50 border rounded-lg" value={editProjectData.clickCharge} onChange={e => setEditProjectData({ ...editProjectData, clickCharge: parseFloat(e.target.value) || 0 })} />
+                                </div>
+                            </div>
+                            <div className="bg-blue-50 p-4 rounded-lg flex items-center justify-between border border-blue-100">
+                                <div>
+                                    <div className="text-xs font-bold text-blue-600">الإيراد الشهري المتوقع</div>
+                                    <div className="text-2xl font-black text-blue-800">
+                                        EGP {((editProjectData.monthlyVolume || 0) * (editProjectData.clickCharge || 0)).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                    </div>
+                                </div>
+                                <span className="material-icons text-blue-300 text-4xl">payments</span>
                             </div>
 
                             <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold">حفظ</button>
