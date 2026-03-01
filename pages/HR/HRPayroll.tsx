@@ -175,9 +175,8 @@ const HRPayroll: React.FC<HRPayrollProps> = ({ user, selectedProjectId }) => {
         const dailyWage = basic / 30;
         const lateDeduction = ((entry.absence_days || 0) + (entry.penalty_days || 0)) * dailyWage;
 
-        // Fallback to basic salary if insurance_salary is not set from DB, capped at Egyptian legal limit 12600 EGP
-        const targetInsuranceSalary = insuranceSalary > 0 ? insuranceSalary : basic;
-        const cappedInsuranceSalary = Math.min(targetInsuranceSalary, 12600);
+        // Calculate insurance strictly from insurance_salary (الاجر التامينى), capped at Egyptian legal limit 12600 EGP
+        const cappedInsuranceSalary = Math.min(insuranceSalary > 0 ? insuranceSalary : 0, 12600);
         let insurance = cappedInsuranceSalary * 0.11;
 
         // New comer grace period: If hired this month and worked less than 15 days, do not deduct insurance for this first month.
