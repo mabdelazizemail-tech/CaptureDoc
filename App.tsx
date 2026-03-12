@@ -7,6 +7,7 @@ import TicketSystem from './pages/TicketSystem';
 import HealthCheck from './pages/HealthCheck';
 import DatabaseDebugger from './pages/DatabaseDebugger';
 import HRDashboard from './pages/HR/HRDashboard';
+import ProjectManagementDashboard from './pages/ProjectManagementDashboard';
 import Sidebar from './components/Sidebar';
 import { User } from './services/types';
 import { StorageService } from './services/storage';
@@ -138,7 +139,7 @@ const App: React.FC = () => {
                     {activePage === 'operators' && 'إدارة الموظفين'}
                     {activePage === 'upload' && 'استيراد بيانات'}
                     {activePage === 'kpi' && 'تقييم الأداء اليومي'}
-                    {activePage === 'project-management' && 'إدارة الموارد'}
+                    {activePage === 'project-management' && 'إدارة المشاريع (Project Management)'}
                     {activePage === 'structure' && 'الهيكل التنظيمي'}
                     {activePage === 'approvals' && 'المراجعات'}
                     {activePage === 'history' && 'سجل التقييمات'}
@@ -164,6 +165,8 @@ const App: React.FC = () => {
               <TicketSystem user={user} />
             ) : activePage === 'hr' ? (
               <HRDashboard user={user} />
+            ) : activePage === 'pm-dashboard' || activePage === 'project-management' ? (
+              <ProjectManagementDashboard user={user} />
             ) : isAdmin ? (
               <AdminDashboard activeTab={activePage} currentUser={user} onNavigate={setActivePage} onlineUsers={onlineUsers} />
             ) : (

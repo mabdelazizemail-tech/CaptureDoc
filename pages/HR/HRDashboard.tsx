@@ -2,10 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User } from '../../services/types';
 import { supabase } from '../../services/supabaseClient';
 import HREmployees from './HREmployees';
-import HRAttendance from './HRAttendance';
 import HRKPIs from './HRKPIs';
-import HRHolidays from './HRHolidays';
-import HRLeave from './HRLeave';
 import HRPayroll from './HRPayroll';
 
 interface HRDashboardProps {
@@ -17,7 +14,7 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('overview');
     const [projectName, setProjectName] = useState<string>('');
-    const [selectedProjectId, setSelectedProjectId] = useState<string>(user.projectId || 'all');
+    const [selectedProjectId, setSelectedProjectId] = useState<string>(user.role === 'project_manager' ? 'all' : (user.projectId || 'all'));
     const [allProjects, setAllProjects] = useState<{ id: string, name: string }[]>([]);
 
     const isFullAdmin = user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'it_specialist' || user.role === 'hr_admin';
@@ -27,10 +24,13 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
             if (isFullAdmin) {
                 const { data } = await supabase.from('projects').select('id, name');
                 if (data) setAllProjects(data);
+            } else if (user.role === 'project_manager') {
+                const { data } = await supabase.from('projects').select('id, name').eq('pm_id', user.id);
+                if (data) setAllProjects(data);
             }
         }
         fetchProjects();
-    }, [isFullAdmin]);
+    }, [isFullAdmin, user.id, user.role]);
 
     useEffect(() => {
         async function fetchInitialData() {
@@ -88,26 +88,14 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
                     <span className="material-icons text-[18px]">badge</span>
                     إدارة الموظفين
                 </button>
-                <button
-                    onClick={() => setActiveTab('attendance')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'attendance' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-                >
-                    <span className="material-icons text-[18px]">how_to_reg</span>
-                    الحضور والغياب
-                </button>
-                <button
-                    onClick={() => setActiveTab('leave')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'leave' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-                >
-                    <span className="material-icons text-[18px]">flight_takeoff</span>
-                    الاجازات
-                </button>
+
+
                 <button
                     onClick={() => setActiveTab('payroll')}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'payroll' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
                 >
                     <span className="material-icons text-[18px]">payments</span>
-                    نظام الرواتب
+                    الرواتب والمؤثرات
                 </button>
                 <button
                     onClick={() => setActiveTab('kpi')}
@@ -115,13 +103,6 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
                 >
                     <span className="material-icons text-[18px]">analytics</span>
                     تقييم الأداء (KPIs)
-                </button>
-                <button
-                    onClick={() => setActiveTab('holidays')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'holidays' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-                >
-                    <span className="material-icons text-[18px]">event</span>
-                    العطلات
                 </button>
             </div>
 
@@ -135,7 +116,7 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
                         </div>
                     </div>
 
-                    {isFullAdmin && (
+                    {(isFullAdmin || (user.role === 'project_manager' && allProjects.length > 0)) && (
                         <div className="flex items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                             <span className="material-icons text-gray-400">filter_list</span>
                             <span className="text-sm font-bold text-gray-600">عرض بيانات:</span>
@@ -202,20 +183,9 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
                 <HREmployees user={user} selectedProjectId={selectedProjectId} />
             )}
 
-            {activeTab === 'attendance' && (
-                <HRAttendance user={user} selectedProjectId={selectedProjectId} />
-            )}
-
-            {activeTab === 'leave' && (
-                <HRLeave user={user} selectedProjectId={selectedProjectId} />
-            )}
 
             {activeTab === 'kpi' && (
                 <HRKPIs user={user} selectedProjectId={selectedProjectId} />
-            )}
-
-            {activeTab === 'holidays' && (
-                <HRHolidays user={user} selectedProjectId={selectedProjectId} />
             )}
 
             {activeTab === 'payroll' && (

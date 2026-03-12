@@ -27,14 +27,9 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
 
     const operationalItems: MenuItem[] = [
       { id: 'structure', label: 'الهيكل التنظيمي', icon: 'account_tree' },
-      { id: 'approvals', label: 'المراجعات', icon: 'fact_check' },
-      { id: 'history', label: 'سجل التقييمات', icon: 'manage_search' },
-      { id: 'requests', label: 'الطلبات', icon: 'notifications_active' },
       { id: 'teams', label: 'قائمة المستخدمين', icon: 'groups' },
-      { id: 'operators', label: 'قائمة الموظفين', icon: 'badge' },
       { id: 'assets', label: 'الأصول', icon: 'precision_manufacturing' },
       { id: 'tickets', label: 'الدعم الفني', icon: 'confirmation_number' }, // Added Ticket System
-      { id: 'upload', label: 'استيراد بيانات', icon: 'upload_file' },
     ];
 
     switch (user.role) {
@@ -42,10 +37,9 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
       case 'power_admin':
         return [
           ...commonAdminItems,
-          { id: 'project-management', label: 'إدارة الموارد', icon: 'manage_accounts' },
+          { id: 'project-management', label: 'إدارة المشاريع', icon: 'manage_accounts' },
           ...operationalItems,
-          { id: 'health-check', label: 'فحص النظام', icon: 'monitor_heart' },
-          { id: 'debug', label: 'DB Debugger', icon: 'pest_control' }
+          { id: 'health-check', label: 'فحص النظام', icon: 'monitor_heart' }
         ];
       case 'project_manager':
         return [
@@ -71,12 +65,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
           { id: 'hr', label: 'الموارد البشرية', icon: 'badge' },
           { id: 'reports', label: 'التحليلات', icon: 'analytics' },
           { id: 'teams', label: 'إدارة المستخدمين', icon: 'groups' },
-          { id: 'operators', label: 'قائمة الموظفين', icon: 'badge' },
           { id: 'assets', label: 'إدارة الأصول', icon: 'inventory' },
           { id: 'tickets', label: 'الدعم الفني', icon: 'confirmation_number' },
-          { id: 'approvals', label: 'المراجعات', icon: 'fact_check' },
-          { id: 'history', label: 'سجل التقييمات', icon: 'manage_search' },
-          { id: 'upload', label: 'استيراد بيانات', icon: 'upload_file' },
         ];
       default:
         return [];

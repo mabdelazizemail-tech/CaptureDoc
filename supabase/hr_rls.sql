@@ -23,10 +23,16 @@ CREATE POLICY "Employees access policy" ON public.hr_employees
 FOR ALL USING (
   EXISTS (
     SELECT 1 FROM public.profiles p
-    LEFT JOIN public.projects pr ON pr.id = p.project_id
     WHERE p.id::text = auth.uid()::text AND (
       p.role IN ('super_admin', 'power_admin', 'it_specialist', 'hr_admin') OR 
-      (p.role = 'project_manager' AND (pr.name = hr_employees.project OR p.project_id::text = hr_employees.project))
+      (p.role = 'project_manager' AND (
+        p.project_id::text = hr_employees.project OR 
+        EXISTS (
+          SELECT 1 FROM public.projects pr 
+          WHERE pr.pm_id::text = p.id::text 
+          AND (pr.name = hr_employees.project OR pr.id::text = hr_employees.project)
+        )
+      ))
     )
   ) OR (auth.role() = 'anon')
 );
@@ -38,10 +44,16 @@ FOR ALL USING (
   EXISTS (
     SELECT 1 FROM public.profiles p
     JOIN public.hr_employees e ON e.id = hr_attendance.employee_id
-    LEFT JOIN public.projects pr ON pr.id = p.project_id
     WHERE p.id::text = auth.uid()::text AND (
       p.role IN ('super_admin', 'power_admin', 'it_specialist', 'hr_admin') OR 
-      (p.role = 'project_manager' AND (pr.name = e.project OR p.project_id::text = e.project))
+      (p.role = 'project_manager' AND (
+        p.project_id::text = e.project OR 
+        EXISTS (
+          SELECT 1 FROM public.projects pr 
+          WHERE pr.pm_id::text = p.id::text 
+          AND (pr.name = e.project OR pr.id::text = e.project)
+        )
+      ))
     )
   ) OR (auth.role() = 'anon')
 );
@@ -53,10 +65,16 @@ FOR ALL USING (
   EXISTS (
     SELECT 1 FROM public.profiles p
     JOIN public.hr_employees e ON e.id = hr_kpis.employee_id
-    LEFT JOIN public.projects pr ON pr.id = p.project_id
     WHERE p.id::text = auth.uid()::text AND (
       p.role IN ('super_admin', 'power_admin', 'it_specialist', 'hr_admin') OR 
-      (p.role = 'project_manager' AND (pr.name = e.project OR p.project_id::text = e.project))
+      (p.role = 'project_manager' AND (
+        p.project_id::text = e.project OR 
+        EXISTS (
+          SELECT 1 FROM public.projects pr 
+          WHERE pr.pm_id::text = p.id::text 
+          AND (pr.name = e.project OR pr.id::text = e.project)
+        )
+      ))
     )
   ) OR (auth.role() = 'anon')
 );

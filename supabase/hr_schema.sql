@@ -33,10 +33,13 @@ CREATE TABLE public.hr_employees (
   project text,
   basic_salary numeric NOT NULL CHECK (basic_salary > 0),
   variable_salary numeric DEFAULT 0,
+  target_volume numeric DEFAULT 0,
   annual_leave_balance integer DEFAULT 21,
   status text CHECK (status IN ('active', 'inactive')) DEFAULT 'active',
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
-  updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+  updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+  transfer_account_number text,
+  transfer_account_type text
 );
 
 -- 3. ATTENDANCE
@@ -90,8 +93,16 @@ CREATE TABLE public.hr_payroll (
   employee_id uuid REFERENCES public.hr_employees(id) ON DELETE CASCADE,
   month text NOT NULL, -- Format: YYYY-MM
   basic_salary numeric NOT NULL,
+  overtime_hours numeric DEFAULT 0,
   overtime_amount numeric DEFAULT 0,
+  absence_days numeric DEFAULT 0,
+  penalty_days numeric DEFAULT 0,
   late_deduction numeric DEFAULT 0,
+  target_achieved numeric DEFAULT 0,
+  taxes numeric DEFAULT 0,
+  insurance numeric DEFAULT 0,
+  martyrs numeric DEFAULT 0,
+  gross_salary numeric DEFAULT 0,
   net_salary numeric NOT NULL,
   status text CHECK (status IN ('draft', 'finalized')) DEFAULT 'draft',
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -170,7 +181,10 @@ CREATE OR REPLACE FUNCTION public.hr_update_employee(
   p_insurance_number text DEFAULT NULL,
   p_insurance_date date DEFAULT NULL,
   p_insurance_salary numeric DEFAULT NULL,
-  p_status text DEFAULT 'active'
+  p_status text DEFAULT 'active',
+  p_target_volume numeric DEFAULT NULL,
+  p_transfer_account_number text DEFAULT NULL,
+  p_transfer_account_type text DEFAULT NULL
 ) RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -185,12 +199,14 @@ BEGIN
     -- Insert new employee or update if email already exists
     INSERT INTO public.hr_employees (
       full_name, email, phone, national_id, gender, date_of_birth, education,
-      hire_date, job_title, department, project, basic_salary, variable_salary,
-      employee_code, address, insurance_number, insurance_date, insurance_salary, status
+      hire_date, job_title, department, project, basic_salary, variable_salary, target_volume,
+      employee_code, address, insurance_number, insurance_date, insurance_salary, status,
+      transfer_account_number, transfer_account_type
     ) VALUES (
       p_full_name, p_email, p_phone, p_national_id, p_gender, p_date_of_birth, p_education,
-      p_hire_date, p_job_title, p_department, p_project, p_basic_salary, p_variable_salary,
-      p_employee_code, p_address, p_insurance_number, p_insurance_date, p_insurance_salary, p_status
+      p_hire_date, p_job_title, p_department, p_project, p_basic_salary, p_variable_salary, p_target_volume,
+      p_employee_code, p_address, p_insurance_number, p_insurance_date, p_insurance_salary, p_status,
+      p_transfer_account_number, p_transfer_account_type
     )
     ON CONFLICT (email) DO UPDATE SET
       full_name = EXCLUDED.full_name,
@@ -205,12 +221,15 @@ BEGIN
       project = EXCLUDED.project,
       basic_salary = EXCLUDED.basic_salary,
       variable_salary = EXCLUDED.variable_salary,
+      target_volume = EXCLUDED.target_volume,
       employee_code = EXCLUDED.employee_code,
       address = EXCLUDED.address,
       insurance_number = EXCLUDED.insurance_number,
       insurance_date = EXCLUDED.insurance_date,
       insurance_salary = EXCLUDED.insurance_salary,
       status = EXCLUDED.status,
+      transfer_account_number = EXCLUDED.transfer_account_number,
+      transfer_account_type = EXCLUDED.transfer_account_type,
       updated_at = timezone('utc'::text, now());
   ELSE
     -- Update existing employee
@@ -228,12 +247,15 @@ BEGIN
       project = p_project,
       basic_salary = p_basic_salary,
       variable_salary = p_variable_salary,
+      target_volume = p_target_volume,
       employee_code = p_employee_code,
       address = p_address,
       insurance_number = p_insurance_number,
       insurance_date = p_insurance_date,
       insurance_salary = p_insurance_salary,
       status = p_status,
+      transfer_account_number = p_transfer_account_number,
+      transfer_account_type = p_transfer_account_type,
       updated_at = timezone('utc'::text, now())
     WHERE id = p_id;
   END IF;
@@ -340,10 +362,40 @@ CREATE TABLE public.hr_kpis (
   UNIQUE(employee_id, month)
 );
 
+-- 10.5 PROJECT KPIs (Volume Tracking)
+CREATE TABLE public.hr_project_kpis (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  project_id uuid REFERENCES public.projects(id) ON DELETE CASCADE,
+  month text NOT NULL, -- Format: YYYY-MM
+  volume integer DEFAULT 0,
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+  UNIQUE(project_id, month)
+);
+
 -- Enable RLS on core tables
 ALTER TABLE public.hr_employees ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.hr_attendance ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.hr_kpis ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hr_project_kpis ENABLE ROW LEVEL SECURITY;
+
+-- Policy for hr_project_kpis
+CREATE POLICY "Project KPIs access policy" ON public.hr_project_kpis
+FOR ALL TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id::text = auth.uid()::text AND (
+      p.role IN ('super_admin', 'power_admin', 'it_specialist', 'hr_admin') OR 
+      (p.role = 'project_manager' AND (
+        p.project_id::text = hr_project_kpis.project_id::text OR 
+        EXISTS (
+          SELECT 1 FROM public.projects pr 
+          WHERE pr.id::text = hr_project_kpis.project_id::text AND pr.pm_id::text = p.id::text
+        )
+      ))
+    )
+  )
+);
 
 -- Policy for hr_employees
 CREATE POLICY "Employees access policy" ON public.hr_employees
@@ -351,10 +403,16 @@ FOR ALL TO authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.profiles p
-    LEFT JOIN public.projects pr ON pr.id = p.project_id
-    WHERE p.id = auth.uid() AND (
+    WHERE p.id::text = auth.uid()::text AND (
       p.role IN ('super_admin', 'power_admin', 'it_specialist', 'hr_admin') OR 
-      (p.role = 'project_manager' AND (pr.name = hr_employees.project OR p.project_id::text = hr_employees.project))
+      (p.role = 'project_manager' AND (
+        p.project_id::text = hr_employees.project OR 
+        EXISTS (
+          SELECT 1 FROM public.projects pr 
+          WHERE pr.pm_id::text = p.id::text 
+          AND (pr.name = hr_employees.project OR pr.id::text = hr_employees.project)
+        )
+      ))
     )
   )
 );
@@ -366,10 +424,16 @@ USING (
   EXISTS (
     SELECT 1 FROM public.profiles p
     JOIN public.hr_employees e ON e.id = hr_attendance.employee_id
-    LEFT JOIN public.projects pr ON pr.id = p.project_id
-    WHERE p.id = auth.uid() AND (
+    WHERE p.id::text = auth.uid()::text AND (
       p.role IN ('super_admin', 'power_admin', 'it_specialist', 'hr_admin') OR 
-      (p.role = 'project_manager' AND (pr.name = e.project OR p.project_id::text = e.project))
+      (p.role = 'project_manager' AND (
+        p.project_id::text = e.project OR 
+        EXISTS (
+          SELECT 1 FROM public.projects pr 
+          WHERE pr.pm_id::text = p.id::text 
+          AND (pr.name = e.project OR pr.id::text = e.project)
+        )
+      ))
     )
   )
 );
@@ -381,10 +445,16 @@ USING (
   EXISTS (
     SELECT 1 FROM public.profiles p
     JOIN public.hr_employees e ON e.id = hr_kpis.employee_id
-    LEFT JOIN public.projects pr ON pr.id = p.project_id
-    WHERE p.id = auth.uid() AND (
+    WHERE p.id::text = auth.uid()::text AND (
       p.role IN ('super_admin', 'power_admin', 'it_specialist', 'hr_admin') OR 
-      (p.role = 'project_manager' AND (pr.name = e.project OR p.project_id::text = e.project))
+      (p.role = 'project_manager' AND (
+        p.project_id::text = e.project OR 
+        EXISTS (
+          SELECT 1 FROM public.projects pr 
+          WHERE pr.pm_id::text = p.id::text 
+          AND (pr.name = e.project OR pr.id::text = e.project)
+        )
+      ))
     )
   )
 );
@@ -414,6 +484,6 @@ FOR ALL TO authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND role IN ('super_admin', 'power_admin', 'it_specialist', 'hr_admin')
+    WHERE id::text = auth.uid()::text AND role IN ('super_admin', 'power_admin', 'it_specialist', 'hr_admin')
   )
 );

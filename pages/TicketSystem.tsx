@@ -5,6 +5,7 @@ import { StorageService } from '../services/storage';
 import { supabase } from '../services/supabaseClient';
 import Toast from '../components/Toast';
 import ConfirmationModal from '../components/ConfirmationModal';
+import * as XLSX from 'xlsx';
 
 interface TicketSystemProps {
     user: User;
@@ -63,11 +64,17 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
         priority: 'medium'
     });
 
+    // Sub-items for ordering tools
+    const [toolsItems, setToolsItems] = useState<{ qty: number; desc: string }[]>([{ qty: 1, desc: '' }]);
+    const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+    const [editFiles, setEditFiles] = useState<File[]>([]);
+
     // Metrics for Admin
     const [metrics, setMetrics] = useState({
         avgTime: '0h',
         total: 0,
-        open: 0
+        open: 0,
+        totalCost: 0
     });
 
     const isSuperAdmin = ['super_admin', 'power_admin'].includes(user.role);
@@ -116,17 +123,29 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
             });
 
             const avgHours = count > 0 ? (totalTimeMs / count / (1000 * 60 * 60)).toFixed(1) : '0';
+            const totalCost = tickets.reduce((sum, t) => sum + (t.cost || 0), 0);
 
             setMetrics({
                 avgTime: `${avgHours} hrs`,
                 total: tickets.length,
-                open: tickets.filter(t => t.status === 'open').length
+                open: tickets.filter(t => t.status === 'open').length,
+                totalCost
             });
         }
     }, [tickets, isSuperAdmin, user.role]);
 
     const handleCreateTicket = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        let finalDescription = newTicket.description;
+        if (newTicket.category === 'tools') {
+            const validItems = toolsItems.filter(item => item.desc.trim() !== '');
+            if (validItems.length === 0) {
+                showToast('يرجى إدخال أدوات ومستلزمات', 'error');
+                return;
+            }
+            finalDescription = validItems.map(item => `العدد: ${item.qty} | الوصف: ${item.desc}`).join('\n');
+        }
 
         const projectIdToUse = user.role === 'project_manager' ? newTicket.projectId : user.projectId;
 
@@ -135,20 +154,32 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
             return;
         }
 
+        setLoading(true);
+        const attachmentUrls: string[] = [];
+        for (const file of selectedFiles) {
+            const url = await StorageService.uploadTicketAttachment(file);
+            if (url) attachmentUrls.push(url);
+        }
+
         const result = await StorageService.createTicket({
             ...newTicket,
+            description: finalDescription,
             createdBy: user.id,
-            projectId: projectIdToUse
+            projectId: projectIdToUse,
+            attachments: attachmentUrls
         });
 
         if (result.success) {
             setShowCreateModal(false);
             setNewTicket({ ...newTicket, title: '', category: 'hardware', assetId: '', description: '', priority: 'medium' });
+            setToolsItems([{ qty: 1, desc: '' }]);
+            setSelectedFiles([]);
             showToast('تم إنشاء التذكرة بنجاح');
             loadData();
         } else {
             showToast(`Error: ${result.error}`, 'error');
         }
+        setLoading(false);
     };
 
     const handleStatusChange = async (id: string, newStatus: 'in_progress' | 'solved' | 'closed' | 'open') => {
@@ -228,19 +259,81 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
     const handleEditSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!editModal.ticket) return;
+        
+        setLoading(true);
+        const newAttachmentUrls: string[] = [];
+        for (const file of editFiles) {
+            const url = await StorageService.uploadTicketAttachment(file);
+            if (url) newAttachmentUrls.push(url);
+        }
+
         const success = await StorageService.updateTicket(editModal.ticket.id, {
             title: editModal.ticket.title,
             category: editModal.ticket.category,
             priority: editModal.ticket.priority,
-            cost: editModal.ticket.cost
+            cost: editModal.ticket.cost,
+            attachments: [...(editModal.ticket.attachments || []), ...newAttachmentUrls]
         });
+        
         if (success) {
             showToast('تم تحديث التذكرة بنجاح');
             setEditModal({ isOpen: false, ticket: null });
+            setEditFiles([]);
             loadData();
         } else {
             showToast('خطأ أثناء التحديث', 'error');
         }
+        setLoading(false);
+    };
+
+    const exportToolsToExcel = (ticket: Ticket) => {
+        if (ticket.category !== 'tools') {
+            showToast('لا يمكن تصدير سوى تذاكر الأدوات', 'info');
+            return;
+        }
+
+        const lines = ticket.description.split('\n');
+        const toolsRows = lines.map((line, idx) => {
+            const match = line.match(/العدد:\s*(\d+)\s*\|\s*الوصف:\s*(.*)/);
+            if (match) {
+                return [idx + 1, Number(match[1]), match[2]];
+            }
+            return [idx + 1, '-', line];
+        });
+
+        const data: any[][] = [
+            ['نموذج طلب أدوات / مستلزمات بمسار', ''],
+            [''],
+            ['رقم التذكرة:', ticket.id.substring(0, 8).toUpperCase()],
+            ['عنوان التذكرة:', ticket.title],
+            ['المشروع:', ticket.projectName || 'غير محدد'],
+            ['المنشئ:', ticket.creatorName || 'غير محدد'],
+            ['تاريخ الطلب:', new Date(ticket.createdAt).toLocaleDateString('ar-EG')],
+            ['الحالة:', getStatusLabel(ticket.status)],
+            ['الأولوية:', ticket.priority],
+            [''],
+            ['جدول الأدوات (Tools Details):'],
+            ['م', 'الكمية', 'الوصف'],
+            ...toolsRows,
+            [''],
+            ['التكلفة الإجمالية (EGP):', ticket.cost ? `${ticket.cost} EGP` : '0 EGP'],
+            [''],
+            ['توقيع المشرف:', '.........................', 'توقيع الإدارة (IT/PM):', '.........................']
+        ];
+
+        const worksheet = XLSX.utils.aoa_to_sheet(data);
+
+        // Basic Column Width Settings
+        worksheet['!cols'] = [
+            { wch: 25 }, // Col A 
+            { wch: 20 }, // Col B 
+            { wch: 50 }, // Col C 
+            { wch: 25 }, // Col D 
+        ];
+
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Tools_Order');
+        XLSX.writeFile(workbook, `Tools_Order_${ticket.id.substring(0, 5)}_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
     const getStatusColor = (status: string) => {
@@ -261,6 +354,43 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
             case 'closed': return 'مغلق';
             default: return status;
         }
+    };
+
+    const renderDescription = (description: string, category: string, isSmall = false) => {
+        if (category === 'tools' && description.includes('العدد:')) {
+            const lines = description.split('\n');
+            return (
+                <div className="mt-2 text-xs border rounded-lg overflow-hidden border-gray-100 bg-gray-50 mb-3">
+                    <table className="w-full text-right">
+                        <thead className="bg-gray-100/50 border-b border-gray-100">
+                            <tr>
+                                <th className="p-1.5 w-12 text-gray-500">العدد</th>
+                                <th className="p-1.5 text-gray-500">الوصف</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {lines.map((line, idx) => {
+                                const match = line.match(/العدد:\s*(\d+)\s*\|\s*الوصف:\s*(.*)/);
+                                if (match) {
+                                    return (
+                                        <tr key={idx}>
+                                            <td className="p-1.5 font-bold text-gray-700">{match[1]}</td>
+                                            <td className="p-1.5 text-gray-600">{match[2]}</td>
+                                        </tr>
+                                    );
+                                }
+                                return (
+                                    <tr key={idx}>
+                                        <td colSpan={2} className="p-1.5 text-gray-600">{line}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        }
+        return <p className={`text-gray-600 ${isSmall ? 'text-xs mb-3 line-clamp-2' : 'text-sm mb-2 whitespace-pre-wrap'}`}>{description}</p>;
     };
 
     const renderCreatorView = () => {
@@ -314,7 +444,18 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                     <span className={`px-2 py-0.5 rounded text-xs font-bold ${getStatusColor(t.status)}`}>{getStatusLabel(t.status)}</span>
                                     <span className="font-bold text-gray-800 text-lg">{t.title}</span>
                                 </div>
-                                <p className="text-gray-600 text-sm mb-2">{t.description}</p>
+                                {renderDescription(t.description, t.category)}
+                                
+                                {t.attachments && t.attachments.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mb-3">
+                                        {t.attachments.map((url, idx) => (
+                                            <a key={idx} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-1 bg-gray-50 border border-gray-100 px-2 py-1 rounded text-[10px] text-blue-600 hover:bg-blue-50">
+                                                <span className="material-icons text-xs">attach_file</span> مرفق {idx + 1}
+                                            </a>
+                                        ))}
+                                    </div>
+                                )}
+
                                 <div className="flex gap-4 text-xs text-gray-400">
                                     <span className="flex items-center gap-1"><span className="material-icons text-xs">category</span> {t.category}</span>
                                     <span className="flex items-center gap-1"><span className="material-icons text-xs">inventory_2</span> {t.assetName || 'بدون أصل'}</span>
@@ -358,7 +499,7 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                 </div>
 
                 {/* Metrics Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                         <div className="text-gray-500 text-xs font-bold uppercase">إجمالي التذاكر</div>
                         <div className="text-3xl font-bold text-gray-800 mt-1">{metrics.total}</div>
@@ -370,6 +511,11 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                         <div className="text-gray-500 text-xs font-bold uppercase">تذاكر مفتوحة</div>
                         <div className="text-3xl font-bold text-red-600 mt-1">{metrics.open}</div>
+                    </div>
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-orange-100 bg-gradient-to-br from-orange-50 to-orange-100/40">
+                        <div className="text-gray-500 text-xs font-bold uppercase">إجمالي تكلفة الدعم</div>
+                        <div className="text-3xl font-bold text-orange-600 mt-1">{metrics.totalCost.toLocaleString('en-US', { minimumFractionDigits: 0 })}</div>
+                        <div className="text-xs text-orange-400 mt-1">EGP</div>
                     </div>
                 </div>
 
@@ -388,7 +534,18 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                         <span className="font-bold text-gray-800">{t.title}</span>
                                         <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${t.priority === 'critical' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600'}`}>{t.priority}</span>
                                     </div>
-                                    <p className="text-xs text-gray-600 mb-3 line-clamp-2">{t.description}</p>
+                                    {renderDescription(t.description, t.category, true)}
+                                    
+                                    {t.attachments && t.attachments.length > 0 && (
+                                        <div className="flex flex-wrap gap-2 mb-2">
+                                            {t.attachments.map((url, idx) => (
+                                                <a key={idx} href={url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-600 hover:underline flex items-center gap-0.5">
+                                                    <span className="material-icons text-[12px]">attachment</span> مرفق
+                                                </a>
+                                            ))}
+                                        </div>
+                                    )}
+
                                     <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-50">
                                         <div className="text-[10px] text-gray-400 flex items-center gap-1">
                                             <span className="material-icons text-[12px]">person</span>
@@ -452,16 +609,18 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                             <span className="material-icons text-gray-500">list_alt</span>
                             <span className="font-bold text-gray-700">سجل التذاكر التفصيلي</span>
                         </div>
-                        {isSuperAdmin && selectedTickets.length > 0 && (
-                            <div className="flex gap-2 animate-fade-in">
-                                <button onClick={handleBulkOpen} className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-700 flex items-center gap-1">
-                                    <span className="material-icons text-sm">refresh</span> إعادة فتح ({selectedTickets.length})
-                                </button>
-                                <button onClick={handleBulkDelete} className="bg-red-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-red-700 flex items-center gap-1">
-                                    <span className="material-icons text-sm">delete</span> حذف نهائي ({selectedTickets.length})
-                                </button>
-                            </div>
-                        )}
+                        <div className="flex gap-2 animate-fade-in">
+                            {isSuperAdmin && selectedTickets.length > 0 && (
+                                <>
+                                    <button onClick={handleBulkOpen} className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-700 flex items-center gap-1 shadow-sm">
+                                        <span className="material-icons text-sm">refresh</span> إعادة فتح ({selectedTickets.length})
+                                    </button>
+                                    <button onClick={handleBulkDelete} className="bg-red-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-red-700 flex items-center gap-1 shadow-sm">
+                                        <span className="material-icons text-sm">delete</span> حذف نهائي ({selectedTickets.length})
+                                    </button>
+                                </>
+                            )}
+                        </div>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-right text-sm">
@@ -482,6 +641,7 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                     <th className="p-4 text-center">الحالة</th>
                                     <th className="p-4 text-center">الأولوية</th>
                                     <th className="p-4">التكلفة</th>
+                                    <th className="p-4 text-center">المرفقات</th>
                                     <th className="p-4">التاريخ</th>
                                     <th className="p-4">الإجراء</th>
                                 </tr>
@@ -509,16 +669,46 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                         <td className="p-4 text-center">
                                             <span className="text-[10px] font-bold text-gray-500 uppercase">{t.priority}</span>
                                         </td>
-                                        <td className="p-4 font-mono font-bold text-red-600">
-                                            {t.cost !== null && t.cost !== undefined ? `${t.cost} EGP` : '-'}
+                                        <td className="p-4 font-mono font-bold">
+                                            {t.cost !== null && t.cost !== undefined && t.cost > 0 ? (
+                                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-50 border border-orange-200 rounded-lg text-orange-700 text-xs font-bold">
+                                                    <span className="material-icons text-[12px]">payments</span>
+                                                    {t.cost.toLocaleString()} EGP
+                                                </span>
+                                            ) : (
+                                                <span className="text-gray-300 text-xs">—</span>
+                                            )}
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            {t.attachments && t.attachments.length > 0 ? (
+                                                <div className="flex justify-center gap-1">
+                                                    {t.attachments.map((url, idx) => (
+                                                        <a 
+                                                            key={idx} 
+                                                            href={url} 
+                                                            target="_blank" 
+                                                            rel="noreferrer" 
+                                                            className="text-blue-500 hover:text-blue-700"
+                                                            title={`عرض المرفق ${idx + 1}`}
+                                                        >
+                                                            <span className="material-icons text-sm">attach_file</span>
+                                                        </a>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <span className="text-gray-300 text-xs">—</span>
+                                            )}
                                         </td>
                                         <td className="p-4 font-mono text-xs text-gray-400">
                                             {new Date(t.createdAt).toLocaleDateString()}
                                         </td>
-                                        <td className="p-4">
-                                            {(isSuperAdmin || user.role === 'it_specialist') ? (
+                                        <td className="p-4 flex gap-1 items-center justify-end">
+                                            {(isSuperAdmin || user.role === 'it_specialist' || (user.id === t.createdBy && t.status === 'open')) ? (
                                                 <button
-                                                    onClick={() => setEditModal({ isOpen: true, ticket: t })}
+                                                    onClick={() => {
+                                                        setEditFiles([]);
+                                                        setEditModal({ isOpen: true, ticket: t });
+                                                    }}
                                                     className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
                                                     title="تعديل"
                                                 >
@@ -530,6 +720,15 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                                     className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg"
                                                 >
                                                     <span className="material-icons text-sm">visibility</span>
+                                                </button>
+                                            )}
+                                            {t.category === 'tools' && (isSuperAdmin || user.role === 'it_specialist' || user.role === 'hr_admin') && (
+                                                <button
+                                                    onClick={() => exportToolsToExcel(t)}
+                                                    className="p-1.5 text-green-500 hover:bg-green-50 rounded-lg transition-colors"
+                                                    title="تصدير Excel"
+                                                >
+                                                    <span className="material-icons text-sm">download</span>
                                                 </button>
                                             )}
                                         </td>
@@ -566,10 +765,10 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
             {/* Create Ticket Modal */}
             {showCreateModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 animate-fade-in-up">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 animate-fade-in-up max-h-[90vh] overflow-y-auto">
                         <div className="flex justify-between items-center mb-6 border-b pb-2">
                             <h3 className="font-bold text-lg text-gray-800">إنشاء تذكرة جديدة</h3>
-                            <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-red-500"><span className="material-icons">close</span></button>
+                            <button type="button" onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-red-500"><span className="material-icons">close</span></button>
                         </div>
                         <form onSubmit={handleCreateTicket} className="space-y-4">
                             <div>
@@ -653,22 +852,101 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                 </select>
                             </div>
 
+                            {newTicket.category === 'tools' ? (
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-2">الأدوات المطلوبة</label>
+                                    <div className="border rounded-lg overflow-hidden border-gray-200">
+                                        <table className="w-full text-sm text-right">
+                                            <thead className="bg-gray-50 border-b">
+                                                <tr>
+                                                    <th className="p-2 w-20">عدد</th>
+                                                    <th className="p-2">وصف</th>
+                                                    <th className="p-2 w-10"></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {toolsItems.map((item, idx) => (
+                                                    <tr key={idx} className="border-b last:border-b-0">
+                                                        <td className="p-2">
+                                                            <input type="number" min="1" className="w-full p-2 border rounded-md outline-none focus:ring-1 focus:ring-primary" value={item.qty} onChange={e => {
+                                                                const newItems = [...toolsItems];
+                                                                newItems[idx].qty = Number(e.target.value);
+                                                                setToolsItems(newItems);
+                                                            }} />
+                                                        </td>
+                                                        <td className="p-2">
+                                                            <input type="text" className="w-full p-2 border rounded-md outline-none focus:ring-1 focus:ring-primary" placeholder="وصف الأداة..." value={item.desc} onChange={e => {
+                                                                const newItems = [...toolsItems];
+                                                                newItems[idx].desc = e.target.value;
+                                                                setToolsItems(newItems);
+                                                            }} />
+                                                        </td>
+                                                        <td className="p-2 text-center">
+                                                            {idx > 0 && (
+                                                                <button type="button" onClick={() => {
+                                                                    const newItems = [...toolsItems];
+                                                                    newItems.splice(idx, 1);
+                                                                    setToolsItems(newItems);
+                                                                }} className="text-red-500 hover:text-red-700 mt-1">
+                                                                    <span className="material-icons text-sm">delete</span>
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                        <button type="button" onClick={() => setToolsItems([...toolsItems, { qty: 1, desc: '' }])} className="w-full p-2 bg-gray-50 text-blue-600 font-bold hover:bg-gray-100 flex justify-center items-center gap-1 border-t border-gray-200">
+                                            <span className="material-icons text-sm">add</span> إضافة
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">التفاصيل</label>
+                                    <textarea
+                                        className="w-full p-3 bg-gray-50 border rounded-lg h-24"
+                                        value={newTicket.description}
+                                        onChange={e => setNewTicket({ ...newTicket, description: e.target.value })}
+                                        required
+                                        placeholder="وصف دقيق للمشكلة..."
+                                    ></textarea>
+                                </div>
+                            )}
+
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1">التفاصيل</label>
-                                <textarea
-                                    className="w-full p-3 bg-gray-50 border rounded-lg h-24"
-                                    value={newTicket.description}
-                                    onChange={e => setNewTicket({ ...newTicket, description: e.target.value })}
-                                    required
-                                    placeholder="وصف دقيق للمشكلة..."
-                                ></textarea>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">المرفقات</label>
+                                <input
+                                    type="file"
+                                    multiple
+                                    className="w-full text-xs p-2 border rounded bg-gray-50"
+                                    onChange={e => {
+                                        if (e.target.files) {
+                                            setSelectedFiles(Array.from(e.target.files));
+                                        }
+                                    }}
+                                />
+                                {selectedFiles.length > 0 && (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {selectedFiles.map((f, i) => (
+                                            <div key={i} className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-[10px] flex items-center gap-1">
+                                                <span className="truncate max-w-[100px]">{f.name}</span>
+                                                <button type="button" onClick={() => setSelectedFiles(selectedFiles.filter((_, idx) => idx !== i))} className="text-red-500">
+                                                    <span className="material-icons text-[12px]">close</span>
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
                             <button
                                 type="submit"
-                                className="w-full bg-primary text-white py-3 rounded-lg font-bold hover:bg-primary-dark transition-colors"
+                                disabled={loading}
+                                className={`w-full bg-primary text-white py-3 rounded-lg font-bold hover:bg-primary-dark transition-colors flex justify-center items-center gap-2 ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
                             >
-                                إرسال التذكرة
+                                {loading && <span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></span>}
+                                {loading ? 'جاري الإنشــاء...' : 'إنشاء التذكرة'}
                             </button>
                         </form>
                     </div>
@@ -758,19 +1036,82 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                     </select>
                                 </div>
                             </div>
+
+                            {/* Existing Attachments */}
+                            {editModal.ticket.attachments && editModal.ticket.attachments.length > 0 && (
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">المرفقات الحالية</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {editModal.ticket.attachments.map((url, idx) => (
+                                            <div key={idx} className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded text-[10px] text-gray-600">
+                                                <a href={url} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-blue-600 transition-colors">
+                                                    <span className="material-icons text-[12px]">link</span>
+                                                    <span className="truncate max-w-[80px]">مرفق {idx + 1}</span>
+                                                </a>
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => {
+                                                        const newAttachments = editModal.ticket!.attachments!.filter((_, i) => i !== idx);
+                                                        setEditModal({ ...editModal, ticket: { ...editModal.ticket!, attachments: newAttachments } });
+                                                    }}
+                                                    className="text-red-500 hover:text-red-700 ml-1"
+                                                >
+                                                    <span className="material-icons text-[12px]">delete</span>
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Add New Attachments */}
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1">التكلفة (EGP)</label>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">إضافة مرفقات جديدة</label>
                                 <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    className="w-full p-3 bg-gray-50 border rounded-lg outline-none"
-                                    value={editModal.ticket.cost ?? ''}
-                                    onChange={e => setEditModal({ ...editModal, ticket: { ...editModal.ticket!, cost: e.target.value ? Number(e.target.value) : undefined } })}
+                                    type="file"
+                                    multiple
+                                    className="w-full text-xs p-2 border rounded bg-gray-50"
+                                    onChange={e => {
+                                        if (e.target.files) {
+                                            setEditFiles(Array.from(e.target.files));
+                                        }
+                                    }}
                                 />
+                                {editFiles.length > 0 && (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {editFiles.map((f, i) => (
+                                            <div key={i} className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-[10px] flex items-center gap-1">
+                                                <span className="truncate max-w-[100px]">{f.name}</span>
+                                                <button type="button" onClick={() => setEditFiles(editFiles.filter((_, idx) => idx !== i))} className="text-red-500">
+                                                    <span className="material-icons text-[12px]">close</span>
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
-                            <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors">
-                                حفظ التعديلات
+
+                            {(isSuperAdmin || user.role === 'it_specialist') && (
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">التكلفة (EGP)</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        className="w-full p-3 bg-gray-50 border rounded-lg outline-none"
+                                        value={editModal.ticket.cost ?? ''}
+                                        onChange={e => setEditModal({ ...editModal, ticket: { ...editModal.ticket!, cost: e.target.value ? Number(e.target.value) : undefined } })}
+                                    />
+                                </div>
+                            )}
+                            
+                            <button 
+                                type="submit" 
+                                disabled={loading}
+                                className={`w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors flex justify-center items-center gap-2 ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                            >
+                                {loading && <span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></span>}
+                                {loading ? 'جاري الحفظ...' : 'حفظ التعديلات'}
                             </button>
                         </form>
                     </div>

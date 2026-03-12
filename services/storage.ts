@@ -120,6 +120,9 @@ export const StorageService = {
             name: p.name,
             location: p.location,
             pmId: p.pm_id,
+            startDate: p.start_date,
+            monthlyVolume: p.contract_monthly_volume,
+            clickCharge: p.click_charge,
             createdAt: p.created_at
         }));
     },
@@ -131,6 +134,9 @@ export const StorageService = {
             name: p.name,
             location: p.location,
             pmId: p.pm_id,
+            startDate: p.start_date,
+            monthlyVolume: p.contract_monthly_volume,
+            clickCharge: p.click_charge,
             createdAt: p.created_at
         }));
     },
@@ -144,17 +150,34 @@ export const StorageService = {
         return true;
     },
 
-    createProject: async (name: string, location: string): Promise<Project | null> => {
-        const { data, error } = await supabase.from('projects').insert({ name, location }).select().single();
+    createProject: async (name: string, location: string, startDate?: string, monthlyVolume?: number, clickCharge?: number): Promise<Project | null> => {
+        const payload: any = { name, location };
+        if (startDate) payload.start_date = startDate;
+        if (monthlyVolume !== undefined) payload.contract_monthly_volume = monthlyVolume;
+        if (clickCharge !== undefined) payload.click_charge = clickCharge;
+
+        const { data, error } = await supabase.from('projects').insert(payload).select().single();
         if (error || !data) return null;
-        return { id: data.id, name: data.name, location: data.location, pmId: data.pm_id, createdAt: data.created_at };
+        return {
+            id: data.id, name: data.name, location: data.location, pmId: data.pm_id,
+            startDate: data.start_date, monthlyVolume: data.contract_monthly_volume,
+            clickCharge: data.click_charge, createdAt: data.created_at
+        };
     },
 
-    updateProject: async (id: string, name: string, location: string, pmId?: string): Promise<boolean> => {
+    updateProject: async (id: string, name: string, location: string, pmId?: string, startDate?: string, monthlyVolume?: number, clickCharge?: number): Promise<boolean> => {
         const payload: any = { name, location };
         if (pmId) payload.pm_id = pmId;
+        if (startDate !== undefined) payload.start_date = startDate || null;
+        if (monthlyVolume !== undefined) payload.contract_monthly_volume = monthlyVolume;
+        if (clickCharge !== undefined) payload.click_charge = clickCharge;
+
         const { error } = await supabase.from('projects').update(payload).eq('id', id);
-        return !error;
+        if (error) {
+            console.error('Update Project API error:', error);
+            return false;
+        }
+        return true;
     },
 
     deleteProject: async (id: string): Promise<boolean> => {
@@ -525,7 +548,7 @@ export const StorageService = {
 
     // --- Tickets ---
     getTickets: async (user: User): Promise<Ticket[]> => {
-        let query = supabase.from('tickets').select('*');
+        let query = supabase.from('tickets').select('*').order('created_at', { ascending: false });
         if (user.role === 'supervisor') { query = query.eq('created_by', user.id); }
         else if (user.role === 'project_manager') { query = query.or(`created_by.eq.${user.id},pmid.eq.${user.id}`); }
 
@@ -582,7 +605,8 @@ export const StorageService = {
             createdAt: t.createdat,
             solvedAt: t.solvedat,
             closedAt: t.closedat,
-            cost: t.cost
+            cost: t.cost,
+            attachments: t.attachments || []
         }));
     },
     createTicket: async (ticket: Partial<Ticket>): Promise<{ success: boolean; error?: string }> => {
@@ -598,7 +622,8 @@ export const StorageService = {
             description: ticket.description,
             priority: ticket.priority,
             status: 'open',
-            created_by: ticket.createdBy
+            created_by: ticket.createdBy,
+            attachments: ticket.attachments || []
         };
 
         if (ticket.projectId) payload.projectid = ticket.projectId;
@@ -664,6 +689,7 @@ export const StorageService = {
         if (updates.description) payload.description = updates.description;
         if (updates.status) payload.status = updates.status;
         if (updates.cost !== undefined) payload.cost = updates.cost;
+        if (updates.attachments) payload.attachments = updates.attachments;
 
         const { error } = await supabase.from('tickets').update(payload).eq('id', id);
         return !error;
@@ -672,5 +698,26 @@ export const StorageService = {
     deleteTickets: async (ids: string[]): Promise<boolean> => {
         const { error } = await supabase.from('tickets').delete().in('id', ids);
         return !error;
+    },
+
+    uploadTicketAttachment: async (file: File): Promise<string | null> => {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
+        const filePath = `attachments/${fileName}`;
+
+        const { error: uploadError, data } = await supabase.storage
+            .from('ticket-attachments')
+            .upload(filePath, file);
+
+        if (uploadError) {
+            console.error('Upload error:', uploadError);
+            return null;
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+            .from('ticket-attachments')
+            .getPublicUrl(filePath);
+
+        return publicUrl;
     }
 };

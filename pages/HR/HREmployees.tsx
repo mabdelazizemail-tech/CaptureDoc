@@ -22,7 +22,10 @@ interface Employee {
     project: string;
     basic_salary: number;
     variable_salary: number;
+    target_volume: number;
     status: string;
+    transfer_account_number: string;
+    transfer_account_type: string;
 }
 
 import { User } from '../../services/types';
@@ -56,7 +59,7 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
         setLoading(true);
         let query = supabase.from('hr_employees').select('*');
 
-        const projectToFilter = (user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'it_specialist' || user.role === 'hr_admin')
+        const projectToFilter = (user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'it_specialist' || user.role === 'hr_admin' || user.role === 'project_manager')
             ? (selectedProjectId !== 'all' ? selectedProjectId : null)
             : user.projectId;
 
@@ -85,6 +88,50 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
         } else {
             fetchEmployees();
         }
+    };
+
+    const handleExportSelected = () => {
+        if (selectedEmployees.length === 0) return;
+
+        const selectedData = employees.filter(emp => selectedEmployees.includes(emp.id));
+
+        const headers = [
+            'الاسم الكامل', 'البريد الإلكتروني', 'رقم الهاتف', 'الرقم القومي', 'الرقم الوظيفي',
+            'العنوان', 'الرقم التأميني', 'تاريخ التأمين', 'الأجر التأميني',
+            'النوع', 'تاريخ الميلاد', 'المؤهل', 'تاريخ التعيين', 'المسمى الوظيفي',
+            'القسم', 'المشروع', 'الراتب الأساسي', 'الراتب المتغير', 'الحجم المستهدف', 'الحالة',
+            'رقم حساب التحويل', 'نوع حساب التحويل'
+        ];
+
+        const data = selectedData.map(emp => [
+            emp.full_name,
+            emp.email,
+            emp.phone || '-',
+            emp.national_id || '-',
+            emp.employee_code || '-',
+            emp.address || '-',
+            emp.insurance_number || '-',
+            emp.insurance_date || '-',
+            emp.insurance_salary || 0,
+            emp.gender === 'male' ? 'ذكر' : (emp.gender === 'female' ? 'أنثى' : '-'),
+            emp.date_of_birth || '-',
+            emp.education || '-',
+            emp.hire_date || '-',
+            emp.job_title || '-',
+            emp.department || '-',
+            emp.project || '-',
+            emp.basic_salary,
+            emp.variable_salary || 0,
+            emp.target_volume || 0,
+            emp.status === 'active' ? 'نشط' : 'غير نشط',
+            emp.transfer_account_number || '-',
+            emp.transfer_account_type || '-'
+        ]);
+
+        const worksheet = XLSX.utils.aoa_to_sheet([headers, ...data]);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Employees');
+        XLSX.writeFile(workbook, `Selected_Employees_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
     const handleSave = async (e: React.FormEvent) => {
@@ -120,7 +167,10 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
             p_project: editingEmp.project || null,
             p_basic_salary: basic,
             p_variable_salary: variable,
-            p_status: editingEmp.status || 'active'
+            p_target_volume: parseInt((editingEmp.target_volume as unknown as string) || '0'),
+            p_status: editingEmp.status || 'active',
+            p_transfer_account_number: editingEmp.transfer_account_number || null,
+            p_transfer_account_type: editingEmp.transfer_account_type || null
         });
 
         if (error) {
@@ -130,6 +180,19 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
             setEditingEmp({});
             fetchEmployees();
         }
+    };
+
+
+    const formatDateForDB = (val: any) => {
+        if (!val) return null;
+        // Handle Excel serial dates if they come as numbers
+        if (typeof val === 'number') {
+            const date = new Date((val - 25569) * 86400 * 1000);
+            return date.toISOString().split('T')[0];
+        }
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return null;
+        return d.toISOString().split('T')[0];
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -178,18 +241,21 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
                     p_employee_code: row.employee_code ? String(row.employee_code) : null,
                     p_address: row.address || null,
                     p_insurance_number: row.insurance_number ? String(row.insurance_number) : null,
-                    p_insurance_date: row.insurance_date ? new Date(row.insurance_date).toISOString().split('T')[0] : null,
+                    p_insurance_date: formatDateForDB(row.insurance_date),
                     p_insurance_salary: parseFloat(row.insurance_salary) || 0,
                     p_gender: parsedGender,
-                    p_date_of_birth: row.date_of_birth ? new Date(row.date_of_birth).toISOString().split('T')[0] : null,
+                    p_date_of_birth: formatDateForDB(row.date_of_birth),
                     p_education: row.education || null,
-                    p_hire_date: new Date(row.hire_date).toISOString().split('T')[0],
+                    p_hire_date: formatDateForDB(row.hire_date) || new Date().toISOString().split('T')[0],
                     p_job_title: row.job_title || null,
                     p_department: row.department || null,
                     p_project: row.project || null,
                     p_basic_salary: basic,
                     p_variable_salary: parseFloat(row.variable_salary) || 0,
-                    p_status: parsedStatus
+                    p_target_volume: parseInt(row.target_volume) || 0,
+                    p_status: parsedStatus,
+                    p_transfer_account_number: row.transfer_account_number ? String(row.transfer_account_number) : null,
+                    p_transfer_account_type: row.transfer_account_type ? String(row.transfer_account_type) : null
                 });
 
                 if (error) {
@@ -223,7 +289,8 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
             'full_name', 'email', 'phone', 'national_id', 'employee_code',
             'address', 'insurance_number', 'insurance_date', 'insurance_salary',
             'gender', 'date_of_birth', 'education', 'hire_date', 'job_title',
-            'department', 'project', 'basic_salary', 'variable_salary', 'status'
+            'department', 'project', 'basic_salary', 'variable_salary', 'target_volume', 'status',
+            'transfer_account_number', 'transfer_account_type'
         ];
         // Create an empty worksheet with just the headers
         const worksheet = XLSX.utils.aoa_to_sheet([headers]);
@@ -259,13 +326,22 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                     {selectedEmployees.length > 0 && (
-                        <button
-                            onClick={handleDeleteSelected}
-                            className="bg-red-50 text-red-600 px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-red-100 transition shadow-sm"
-                        >
-                            <span className="material-icons">delete</span>
-                            حذف المحددين ({selectedEmployees.length})
-                        </button>
+                        <>
+                            <button
+                                onClick={handleExportSelected}
+                                className="bg-green-50 text-green-600 px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-green-100 transition shadow-sm"
+                            >
+                                <span className="material-icons">download</span>
+                                تصدير المحددين ({selectedEmployees.length})
+                            </button>
+                            <button
+                                onClick={handleDeleteSelected}
+                                className="bg-red-50 text-red-600 px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-red-100 transition shadow-sm"
+                            >
+                                <span className="material-icons">delete</span>
+                                حذف المحددين ({selectedEmployees.length})
+                            </button>
+                        </>
                     )}
                     <button
                         onClick={downloadTemplate}
@@ -478,8 +554,29 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
                                     <input required min="1" type="number" step="0.01" className="w-full border rounded p-2" value={editingEmp.basic_salary || ''} onChange={e => setEditingEmp({ ...editingEmp, basic_salary: parseFloat(e.target.value) })} />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">البدلات (المتغير)</label>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">الراتب المتغير</label>
                                     <input type="number" step="0.01" className="w-full border rounded p-2" value={editingEmp.variable_salary || ''} onChange={e => setEditingEmp({ ...editingEmp, variable_salary: parseFloat(e.target.value) })} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">الحجم المستهدف المتعاقد عليه</label>
+                                    <input type="number" step="1" className="w-full border rounded p-2" value={editingEmp.target_volume || ''} onChange={e => setEditingEmp({ ...editingEmp, target_volume: parseInt(e.target.value) })} />
+                                </div>
+                                <div className="col-span-2 border-t pt-4 mt-2">
+                                    <h4 className="font-bold text-primary mb-3">بيانات تحويل الراتب</h4>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">رقم حساب التحويل</label>
+                                    <input type="text" className="w-full border rounded p-2" value={editingEmp.transfer_account_number || ''} onChange={e => setEditingEmp({ ...editingEmp, transfer_account_number: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">نوع حساب التحويل</label>
+                                    <select className="w-full border rounded p-2" value={editingEmp.transfer_account_type || ''} onChange={e => setEditingEmp({ ...editingEmp, transfer_account_type: e.target.value })}>
+                                        <option value="">اختيار...</option>
+                                        <option value="Dopay">Dopay</option>
+                                        <option value="Wallet">Wallet</option>
+                                        <option value="CASH">CASH</option>
+                                        <option value="Bank">Bank</option>
+                                    </select>
                                 </div>
                             </div>
 

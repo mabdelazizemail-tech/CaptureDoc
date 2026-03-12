@@ -7,6 +7,9 @@ export interface Project {
   location: string;
   pmId?: string; // Link to Project Manager
   createdAt?: string;
+  startDate?: string;
+  monthlyVolume?: number;
+  clickCharge?: number;
 }
 
 export interface SiteSummary {
@@ -135,6 +138,7 @@ export interface Ticket {
   solvedAt?: string;
   closedAt?: string;
   cost?: number;
+  attachments?: string[];
 }
 
 export interface Session {

@@ -25,5 +25,11 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "hr-system",
+    "supabase",
+    "supabase/functions"
+  ]
 }

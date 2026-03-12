@@ -206,6 +206,19 @@ const AssetDashboard: React.FC<AssetDashboardProps> = ({ user }) => {
         e.preventDefault();
         if (!selectedAsset || !selectedAsset.projectId) return;
         setSubmitStatus('sending');
+
+        // 1. Create a Support Ticket
+        const ticketResult = await StorageService.createTicket({
+            title: `صيانة: ${selectedAsset.name}`,
+            category: 'hardware',
+            description: requestForm.description,
+            priority: requestForm.priority,
+            assetId: selectedAsset.id,
+            projectId: selectedAsset.projectId,
+            createdBy: user.id
+        });
+
+        // 2. Create the legacy Maintenance Request (for KPI/dashboard aggregates)
         const request: MaintenanceRequest = {
             assetId: selectedAsset.id,
             supervisorId: user.id,
@@ -216,7 +229,8 @@ const AssetDashboard: React.FC<AssetDashboardProps> = ({ user }) => {
             createdAt: new Date().toISOString()
         };
         const result = await StorageService.createMaintenanceRequest(request);
-        if (result.success) {
+
+        if (ticketResult.success && result.success) {
             setSubmitStatus('success');
             if (request.priority === 'high' || request.priority === 'critical') {
                 fetchAssets();
@@ -227,7 +241,7 @@ const AssetDashboard: React.FC<AssetDashboardProps> = ({ user }) => {
             }, 1500);
         } else {
             setSubmitStatus('error');
-            showToast(`Error: ${result.error}`, 'error');
+            showToast(`Error: ${ticketResult.error || result.error}`, 'error');
         }
     };
 
@@ -832,7 +846,7 @@ const AssetDashboard: React.FC<AssetDashboardProps> = ({ user }) => {
                             const isFaulty = asset.status === 'faulty' || asset.status === 'maintenance';
                             return (
                                 <div key={asset.id} className={`bg-white rounded-xl shadow-sm border overflow-hidden transition-all hover:shadow-md relative group ${isFaulty ? 'border-red-100' : 'border-gray-100'}`}>
-                                    {canManageAssets && (
+                                    {(isItSpecialist || isSuperAdmin) && (
                                         <button onClick={() => openEditAssetModal(asset)} className="absolute top-3 left-3 p-1.5 rounded-full bg-white text-gray-400 hover:text-blue-600 hover:bg-blue-50 border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity z-10"><span className="material-icons text-sm">edit</span></button>
                                     )}
                                     <div className={`h-1.5 w-full ${asset.status === 'operational' || asset.status === 'in_use' ? 'bg-green-500' : asset.status === 'in_storage' ? 'bg-blue-500' : asset.status === 'faulty' ? 'bg-red-500' : asset.status === 'retired' ? 'bg-gray-400' : 'bg-orange-500'}`}></div>
