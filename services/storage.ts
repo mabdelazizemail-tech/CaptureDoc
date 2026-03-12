@@ -548,7 +548,7 @@ export const StorageService = {
 
     // --- Tickets ---
     getTickets: async (user: User): Promise<Ticket[]> => {
-        let query = supabase.from('tickets').select('*').order('created_at', { ascending: false });
+        let query = supabase.from('tickets').select('*').order('createdat', { ascending: false });
         if (user.role === 'supervisor') { query = query.eq('created_by', user.id); }
         else if (user.role === 'project_manager') { query = query.or(`created_by.eq.${user.id},pmid.eq.${user.id}`); }
 

@@ -601,147 +601,150 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                         </div>
                     </div>
                 </div>
+            </div>
+        );
+    };
 
-                {/* List View / History Log */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mt-8">
-                    <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                            <span className="material-icons text-gray-500">list_alt</span>
-                            <span className="font-bold text-gray-700">سجل التذاكر التفصيلي</span>
-                        </div>
-                        <div className="flex gap-2 animate-fade-in">
-                            {isSuperAdmin && selectedTickets.length > 0 && (
-                                <>
-                                    <button onClick={handleBulkOpen} className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-700 flex items-center gap-1 shadow-sm">
-                                        <span className="material-icons text-sm">refresh</span> إعادة فتح ({selectedTickets.length})
-                                    </button>
-                                    <button onClick={handleBulkDelete} className="bg-red-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-red-700 flex items-center gap-1 shadow-sm">
-                                        <span className="material-icons text-sm">delete</span> حذف نهائي ({selectedTickets.length})
-                                    </button>
-                                </>
-                            )}
-                        </div>
+    const renderDetailedLog = () => {
+        return (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mt-8">
+                <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                        <span className="material-icons text-gray-500">list_alt</span>
+                        <span className="font-bold text-gray-700">سجل التذاكر التفصيلي</span>
                     </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-right text-sm">
-                            <thead className="bg-gray-50 text-gray-500 font-bold uppercase border-b">
-                                <tr>
+                    <div className="flex gap-2 animate-fade-in">
+                        {isSuperAdmin && selectedTickets.length > 0 && (
+                            <>
+                                <button onClick={handleBulkOpen} className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-700 flex items-center gap-1 shadow-sm">
+                                    <span className="material-icons text-sm">refresh</span> إعادة فتح ({selectedTickets.length})
+                                </button>
+                                <button onClick={handleBulkDelete} className="bg-red-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-red-700 flex items-center gap-1 shadow-sm">
+                                    <span className="material-icons text-sm">delete</span> حذف نهائي ({selectedTickets.length})
+                                </button>
+                            </>
+                        )}
+                    </div>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-right text-sm">
+                        <thead className="bg-gray-50 text-gray-500 font-bold uppercase border-b">
+                            <tr>
+                                {isSuperAdmin && (
+                                    <th className="p-3 w-10">
+                                        <input
+                                            type="checkbox"
+                                            className="rounded border-gray-300 text-primary focus:ring-primary"
+                                            checked={selectedTickets.length === tickets.length && tickets.length > 0}
+                                            onChange={e => setSelectedTickets(e.target.checked ? tickets.map(t => t.id) : [])}
+                                        />
+                                    </th>
+                                )}
+                                <th className="p-4">العنوان</th>
+                                <th className="p-4">المشروع</th>
+                                <th className="p-4 text-center">الحالة</th>
+                                <th className="p-4 text-center">الأولوية</th>
+                                <th className="p-4">التكلفة</th>
+                                <th className="p-4 text-center">المرفقات</th>
+                                <th className="p-4">التاريخ</th>
+                                <th className="p-4">الإجراء</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {tickets.map(t => (
+                                <tr key={t.id} className={`hover:bg-blue-50/30 transition-colors ${selectedTickets.includes(t.id) ? 'bg-blue-50/50' : ''}`}>
                                     {isSuperAdmin && (
-                                        <th className="p-3 w-10">
+                                        <td className="p-3 text-center">
                                             <input
                                                 type="checkbox"
                                                 className="rounded border-gray-300 text-primary focus:ring-primary"
-                                                checked={selectedTickets.length === tickets.length && tickets.length > 0}
-                                                onChange={e => setSelectedTickets(e.target.checked ? tickets.map(t => t.id) : [])}
+                                                checked={selectedTickets.includes(t.id)}
+                                                onChange={() => toggleTicketSelection(t.id)}
                                             />
-                                        </th>
+                                        </td>
                                     )}
-                                    <th className="p-4">العنوان</th>
-                                    <th className="p-4">المشروع</th>
-                                    <th className="p-4 text-center">الحالة</th>
-                                    <th className="p-4 text-center">الأولوية</th>
-                                    <th className="p-4">التكلفة</th>
-                                    <th className="p-4 text-center">المرفقات</th>
-                                    <th className="p-4">التاريخ</th>
-                                    <th className="p-4">الإجراء</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {tickets.map(t => (
-                                    <tr key={t.id} className={`hover:bg-blue-50/30 transition-colors ${selectedTickets.includes(t.id) ? 'bg-blue-50/50' : ''}`}>
-                                        {isSuperAdmin && (
-                                            <td className="p-3 text-center">
-                                                <input
-                                                    type="checkbox"
-                                                    className="rounded border-gray-300 text-primary focus:ring-primary"
-                                                    checked={selectedTickets.includes(t.id)}
-                                                    onChange={() => toggleTicketSelection(t.id)}
-                                                />
-                                            </td>
-                                        )}
-                                        <td className="p-4 font-bold text-gray-800">{t.title}</td>
-                                        <td className="p-4 text-gray-600">{t.projectName}</td>
-                                        <td className="p-4 text-center">
-                                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${getStatusColor(t.status)}`}>
-                                                {getStatusLabel(t.status)}
+                                    <td className="p-4 font-bold text-gray-800">{t.title}</td>
+                                    <td className="p-4 text-gray-600">{t.projectName}</td>
+                                    <td className="p-4 text-center">
+                                        <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${getStatusColor(t.status)}`}>
+                                            {getStatusLabel(t.status)}
+                                        </span>
+                                    </td>
+                                    <td className="p-4 text-center">
+                                        <span className="text-[10px] font-bold text-gray-500 uppercase">{t.priority}</span>
+                                    </td>
+                                    <td className="p-4 font-mono font-bold">
+                                        {t.cost !== null && t.cost !== undefined && t.cost > 0 ? (
+                                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-50 border border-orange-200 rounded-lg text-orange-700 text-xs font-bold">
+                                                <span className="material-icons text-[12px]">payments</span>
+                                                {t.cost.toLocaleString()} EGP
                                             </span>
-                                        </td>
-                                        <td className="p-4 text-center">
-                                            <span className="text-[10px] font-bold text-gray-500 uppercase">{t.priority}</span>
-                                        </td>
-                                        <td className="p-4 font-mono font-bold">
-                                            {t.cost !== null && t.cost !== undefined && t.cost > 0 ? (
-                                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-50 border border-orange-200 rounded-lg text-orange-700 text-xs font-bold">
-                                                    <span className="material-icons text-[12px]">payments</span>
-                                                    {t.cost.toLocaleString()} EGP
-                                                </span>
-                                            ) : (
-                                                <span className="text-gray-300 text-xs">—</span>
-                                            )}
-                                        </td>
-                                        <td className="p-4 text-center">
-                                            {t.attachments && t.attachments.length > 0 ? (
-                                                <div className="flex justify-center gap-1">
-                                                    {t.attachments.map((url, idx) => (
-                                                        <a 
-                                                            key={idx} 
-                                                            href={url} 
-                                                            target="_blank" 
-                                                            rel="noreferrer" 
-                                                            className="text-blue-500 hover:text-blue-700"
-                                                            title={`عرض المرفق ${idx + 1}`}
-                                                        >
-                                                            <span className="material-icons text-sm">attach_file</span>
-                                                        </a>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <span className="text-gray-300 text-xs">—</span>
-                                            )}
-                                        </td>
-                                        <td className="p-4 font-mono text-xs text-gray-400">
-                                            {new Date(t.createdAt).toLocaleDateString()}
-                                        </td>
-                                        <td className="p-4 flex gap-1 items-center justify-end">
-                                            {(isSuperAdmin || user.role === 'it_specialist' || (user.id === t.createdBy && t.status === 'open')) ? (
-                                                <button
-                                                    onClick={() => {
-                                                        setEditFiles([]);
-                                                        setEditModal({ isOpen: true, ticket: t });
-                                                    }}
-                                                    className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
-                                                    title="تعديل"
-                                                >
-                                                    <span className="material-icons text-sm">edit</span>
-                                                </button>
-                                            ) : (
-                                                <button
-                                                    onClick={() => showToast(`التفاصيل: ${t.description}`, 'info')}
-                                                    className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg"
-                                                >
-                                                    <span className="material-icons text-sm">visibility</span>
-                                                </button>
-                                            )}
-                                            {t.category === 'tools' && (isSuperAdmin || user.role === 'it_specialist' || user.role === 'hr_admin') && (
-                                                <button
-                                                    onClick={() => exportToolsToExcel(t)}
-                                                    className="p-1.5 text-green-500 hover:bg-green-50 rounded-lg transition-colors"
-                                                    title="تصدير Excel"
-                                                >
-                                                    <span className="material-icons text-sm">download</span>
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                        {tickets.length === 0 && (
-                            <div className="py-20 text-center text-gray-400 italic">
-                                لا توجد سجلات تذاكر حالياً
-                            </div>
-                        )}
-                    </div>
+                                        ) : (
+                                            <span className="text-gray-300 text-xs">—</span>
+                                        )}
+                                    </td>
+                                    <td className="p-4 text-center">
+                                        {t.attachments && t.attachments.length > 0 ? (
+                                            <div className="flex justify-center gap-1">
+                                                {t.attachments.map((url, idx) => (
+                                                    <a 
+                                                        key={idx} 
+                                                        href={url} 
+                                                        target="_blank" 
+                                                        rel="noreferrer" 
+                                                        className="text-blue-500 hover:text-blue-700"
+                                                        title={`عرض المرفق ${idx + 1}`}
+                                                    >
+                                                        <span className="material-icons text-sm">attach_file</span>
+                                                    </a>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <span className="text-gray-300 text-xs">—</span>
+                                        )}
+                                    </td>
+                                    <td className="p-4 font-mono text-xs text-gray-400">
+                                        {new Date(t.createdAt).toLocaleDateString()}
+                                    </td>
+                                    <td className="p-4 flex gap-1 items-center justify-end">
+                                        {(isSuperAdmin || user.role === 'it_specialist' || (user.id === t.createdBy && t.status === 'open')) ? (
+                                            <button
+                                                onClick={() => {
+                                                    setEditFiles([]);
+                                                    setEditModal({ isOpen: true, ticket: t });
+                                                }}
+                                                className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                                                title="تعديل"
+                                            >
+                                                <span className="material-icons text-sm">edit</span>
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={() => showToast(`التفاصيل: ${t.description}`, 'info')}
+                                                className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg"
+                                            >
+                                                <span className="material-icons text-sm">visibility</span>
+                                            </button>
+                                        )}
+                                        {t.category === 'tools' && (isSuperAdmin || user.role === 'it_specialist' || user.role === 'hr_admin') && (
+                                            <button
+                                                onClick={() => exportToolsToExcel(t)}
+                                                className="p-1.5 text-green-500 hover:bg-green-50 rounded-lg transition-colors"
+                                                title="تصدير Excel"
+                                            >
+                                                <span className="material-icons text-sm">download</span>
+                                            </button>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    {tickets.length === 0 && (
+                        <div className="py-20 text-center text-gray-400 italic">
+                            لا توجد سجلات تذاكر حالياً
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -761,6 +764,7 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
 
             {(user.role === 'supervisor' || user.role === 'project_manager') && renderCreatorView()}
             {(user.role === 'it_specialist' || user.role === 'hr_admin' || isSuperAdmin) && renderSupportDashboard()}
+            {renderDetailedLog()}
 
             {/* Create Ticket Modal */}
             {showCreateModal && (
@@ -791,6 +795,7 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                     >
                                         <option value="hardware">أجهزة (Hardware)</option>
                                         <option value="software">برمجيات (Software)</option>
+                                        <option value="scanner">سكانر (Scanner)</option>
                                         <option value="tools">أدوات ومستلزمات (Tools)</option>
                                         <option value="network">شبكة (Network)</option>
                                         <option value="facility">مرافق (Facility)</option>
@@ -1016,6 +1021,7 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
                                     >
                                         <option value="hardware">أجهزة (Hardware)</option>
                                         <option value="software">برمجيات (Software)</option>
+                                        <option value="scanner">سكانر (Scanner)</option>
                                         <option value="tools">أدوات ومستلزمات (Tools)</option>
                                         <option value="network">شبكة (Network)</option>
                                         <option value="facility">مرافق (Facility)</option>

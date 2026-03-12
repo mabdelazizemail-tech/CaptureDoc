@@ -123,7 +123,7 @@ export interface MaintenanceRequest {
 export interface Ticket {
   id: string;
   title: string;
-  category: 'hardware' | 'software' | 'network' | 'facility' | 'tools' | 'other';
+  category: 'hardware' | 'software' | 'network' | 'facility' | 'tools' | 'scanner' | 'other';
   assetId?: string;
   assetName?: string; // For display
   description: string;
