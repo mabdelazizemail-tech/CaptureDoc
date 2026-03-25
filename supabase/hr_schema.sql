@@ -184,7 +184,8 @@ CREATE OR REPLACE FUNCTION public.hr_update_employee(
   p_status text DEFAULT 'active',
   p_target_volume numeric DEFAULT NULL,
   p_transfer_account_number text DEFAULT NULL,
-  p_transfer_account_type text DEFAULT NULL
+  p_transfer_account_type text DEFAULT NULL,
+  p_annual_leave_balance integer DEFAULT NULL
 ) RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -201,12 +202,12 @@ BEGIN
       full_name, email, phone, national_id, gender, date_of_birth, education,
       hire_date, job_title, department, project, basic_salary, variable_salary, target_volume,
       employee_code, address, insurance_number, insurance_date, insurance_salary, status,
-      transfer_account_number, transfer_account_type
+      transfer_account_number, transfer_account_type, annual_leave_balance
     ) VALUES (
       p_full_name, p_email, p_phone, p_national_id, p_gender, p_date_of_birth, p_education,
       p_hire_date, p_job_title, p_department, p_project, p_basic_salary, p_variable_salary, p_target_volume,
       p_employee_code, p_address, p_insurance_number, p_insurance_date, p_insurance_salary, p_status,
-      p_transfer_account_number, p_transfer_account_type
+      p_transfer_account_number, p_transfer_account_type, COALESCE(p_annual_leave_balance, 21)
     )
     ON CONFLICT (email) DO UPDATE SET
       full_name = EXCLUDED.full_name,
@@ -230,6 +231,7 @@ BEGIN
       status = EXCLUDED.status,
       transfer_account_number = EXCLUDED.transfer_account_number,
       transfer_account_type = EXCLUDED.transfer_account_type,
+      annual_leave_balance = EXCLUDED.annual_leave_balance,
       updated_at = timezone('utc'::text, now());
   ELSE
     -- Update existing employee
@@ -256,6 +258,7 @@ BEGIN
       status = p_status,
       transfer_account_number = p_transfer_account_number,
       transfer_account_type = p_transfer_account_type,
+      annual_leave_balance = COALESCE(p_annual_leave_balance, annual_leave_balance),
       updated_at = timezone('utc'::text, now())
     WHERE id = p_id;
   END IF;

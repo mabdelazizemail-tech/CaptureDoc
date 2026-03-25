@@ -26,6 +26,7 @@ interface Employee {
     status: string;
     transfer_account_number: string;
     transfer_account_type: string;
+    annual_leave_balance: number;
 }
 
 import { User } from '../../services/types';
@@ -100,7 +101,7 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
             'العنوان', 'الرقم التأميني', 'تاريخ التأمين', 'الأجر التأميني',
             'النوع', 'تاريخ الميلاد', 'المؤهل', 'تاريخ التعيين', 'المسمى الوظيفي',
             'القسم', 'المشروع', 'الراتب الأساسي', 'الراتب المتغير', 'الحجم المستهدف', 'الحالة',
-            'رقم حساب التحويل', 'نوع حساب التحويل'
+            'رقم حساب التحويل', 'نوع حساب التحويل', 'رصيد الإجازات'
         ];
 
         const data = selectedData.map(emp => [
@@ -125,7 +126,8 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
             emp.target_volume || 0,
             emp.status === 'active' ? 'نشط' : 'غير نشط',
             emp.transfer_account_number || '-',
-            emp.transfer_account_type || '-'
+            emp.transfer_account_type || '-',
+            emp.annual_leave_balance || 0
         ]);
 
         const worksheet = XLSX.utils.aoa_to_sheet([headers, ...data]);
@@ -170,7 +172,8 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
             p_target_volume: parseInt((editingEmp.target_volume as unknown as string) || '0'),
             p_status: editingEmp.status || 'active',
             p_transfer_account_number: editingEmp.transfer_account_number || null,
-            p_transfer_account_type: editingEmp.transfer_account_type || null
+            p_transfer_account_type: editingEmp.transfer_account_type || null,
+            p_annual_leave_balance: editingEmp.annual_leave_balance || 21
         });
 
         if (error) {
@@ -255,7 +258,8 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
                     p_target_volume: parseInt(row.target_volume) || 0,
                     p_status: parsedStatus,
                     p_transfer_account_number: row.transfer_account_number ? String(row.transfer_account_number) : null,
-                    p_transfer_account_type: row.transfer_account_type ? String(row.transfer_account_type) : null
+                    p_transfer_account_type: row.transfer_account_type ? String(row.transfer_account_type) : null,
+                    p_annual_leave_balance: parseInt(row.annual_leave_balance) || 21
                 });
 
                 if (error) {
@@ -290,7 +294,7 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
             'address', 'insurance_number', 'insurance_date', 'insurance_salary',
             'gender', 'date_of_birth', 'education', 'hire_date', 'job_title',
             'department', 'project', 'basic_salary', 'variable_salary', 'target_volume', 'status',
-            'transfer_account_number', 'transfer_account_type'
+            'transfer_account_number', 'transfer_account_type', 'annual_leave_balance'
         ];
         // Create an empty worksheet with just the headers
         const worksheet = XLSX.utils.aoa_to_sheet([headers]);
@@ -416,6 +420,7 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
                                         <div className="text-xs text-gray-500">{emp.department || '-'}</div>
                                     </td>
                                     <td className="p-4 text-green-600 font-bold">{emp.basic_salary} EGP</td>
+                                    <td className="p-4 text-center font-bold text-blue-600">{emp.annual_leave_balance ?? 21}</td>
                                     <td className="p-4">
                                         <span className={`px-2 py-1 rounded text-xs font-bold ${emp.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                             {emp.status === 'active' ? 'نشط' : 'غير نشط'}
@@ -577,6 +582,10 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
                                         <option value="CASH">CASH</option>
                                         <option value="Bank">Bank</option>
                                     </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">رصيد الإجازات</label>
+                                    <input type="number" step="1" className="w-full border rounded p-2" value={editingEmp.annual_leave_balance || 21} onChange={e => setEditingEmp({ ...editingEmp, annual_leave_balance: parseInt(e.target.value) })} />
                                 </div>
                             </div>
 
