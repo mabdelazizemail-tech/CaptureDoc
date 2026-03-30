@@ -140,10 +140,10 @@ const HRPayroll: React.FC<HRPayrollProps> = ({ user, selectedProjectId }) => {
 
             const merged = (empData || []).map(emp => {
                 const record = payRecords?.find(r => r.employee_id === emp.id);
-                // Always pull salary from employee profile (master data), never from saved payroll record
-                const basic    = parseFloat(emp.basic_salary || '0');
-                const variable = parseFloat(emp.variable_salary || '0');
-                const insSal   = parseFloat(emp.insurance_salary || '0');
+                // If payroll record exists (draft/finalized), lock to saved data. Otherwise, use employee master data.
+                const basic    = record ? parseFloat(record.basic_salary || '0') : parseFloat(emp.basic_salary || '0');
+                const variable = record ? parseFloat(record.variable_salary || '0') : parseFloat(emp.variable_salary || '0');
+                const insSal   = record ? parseFloat(record.insurance_salary || '0') : parseFloat(emp.insurance_salary || '0');
 
                 const targetVol = (() => {
                     const proj = allProjects?.find(p => p.id === emp.project || p.name === emp.project);
@@ -300,9 +300,8 @@ const HRPayroll: React.FC<HRPayrollProps> = ({ user, selectedProjectId }) => {
         if (payrollData.length > 0) {
             setPayrollData(prev => prev.map(rec => {
                 if (rec.status !== 'draft') return rec;
-                const emp = employees.find(e => e.id === rec.employee_id);
-                // Always use latest employee master data, not saved payroll record
-                return calculatePayrollRow({ ...rec, employee_percent: undefined }, emp?.basic_salary || 0, emp?.variable_salary || 0, emp?.insurance_salary || 0);
+                // Use locked salary if record was saved (rec.id exists), otherwise use employee master data
+                return calculatePayrollRow({ ...rec, employee_percent: undefined }, rec.basic_salary, rec.variable_salary, rec.insurance_salary);
             }));
         }
     }, [globalPercent]);
@@ -312,9 +311,8 @@ const HRPayroll: React.FC<HRPayrollProps> = ({ user, selectedProjectId }) => {
         setPayrollData(prev => prev.map(rec => {
             if (rec.employee_id !== empId || rec.status === 'finalized') return rec;
             const newRec = { ...rec, [field]: value };
-            const emp = employees.find(e => e.id === empId);
-            // Always use latest employee master data, not saved payroll record
-            return calculatePayrollRow(newRec, emp?.basic_salary || 0, emp?.variable_salary || 0, emp?.insurance_salary || 0);
+            // Use locked salary from payroll record (if exists), otherwise from employee master data
+            return calculatePayrollRow(newRec, rec.basic_salary, rec.variable_salary, rec.insurance_salary);
         }));
     };
 
@@ -326,9 +324,8 @@ const HRPayroll: React.FC<HRPayrollProps> = ({ user, selectedProjectId }) => {
                 newRec.target_achieved = Math.round((percentVal / 100) * newRec.target_volume);
             else
                 newRec.target_achieved = Math.round(percentVal);
-            const emp = employees.find(e => e.id === empId);
-            // Always use latest employee master data, not saved payroll record
-            return calculatePayrollRow(newRec, emp?.basic_salary || 0, emp?.variable_salary || 0, emp?.insurance_salary || 0);
+            // Use locked salary from payroll record (if exists), otherwise from employee master data
+            return calculatePayrollRow(newRec, rec.basic_salary, rec.variable_salary, rec.insurance_salary);
         }));
     };
 
