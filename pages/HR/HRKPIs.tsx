@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../services/supabaseClient';
+import { User } from '../../services/types';
 
+// ─── Types ─────────────────────────────────────────────────────────────────
 interface KPIEntry {
     employee_id: string;
     employee_name?: string;
@@ -26,20 +28,116 @@ interface Employee {
     employee_code?: string;
 }
 
-import { User } from '../../services/types';
-
 interface HRKPIsProps {
     user: User;
     selectedProjectId: string;
 }
 
+// ─── Skeleton Loader Component ─────────────────────────────────────────────
+const SkeletonLoader: React.FC<{ count?: number }> = ({ count = 3 }) => (
+    <div className="space-y-4">
+        {Array.from({ length: count }).map((_, i) => (
+            <div key={i} className="bg-gray-200 dark:bg-gray-700 rounded-lg h-20 animate-pulse" />
+        ))}
+    </div>
+);
+
+// ─── KPI Card Component (Mobile-First) ─────────────────────────────────────
+interface KPICardProps {
+    entry: KPIEntry;
+    employee: Employee | undefined;
+    onScoreChange: (empId: string, field: keyof KPIEntry, value: any) => void;
+}
+
+const KPICard: React.FC<KPICardProps> = ({ entry, employee, onScoreChange }) => {
+    const avg = ((entry.productivity_score + entry.quality_score + entry.attendance_score + entry.commitment_score) / 4).toFixed(1);
+    const avgNum = parseFloat(avg);
+
+    const getStatusColor = (score: number) => {
+        if (score >= 80) return 'bg-green-50 dark:bg-green-900 border-green-200 dark:border-green-700';
+        if (score >= 60) return 'bg-yellow-50 dark:bg-yellow-900 border-yellow-200 dark:border-yellow-700';
+        return 'bg-red-50 dark:bg-red-900 border-red-200 dark:border-red-700';
+    };
+
+    const getScoreTextColor = (score: number) => {
+        if (score >= 80) return 'text-green-700 dark:text-green-300';
+        if (score >= 60) return 'text-yellow-700 dark:text-yellow-300';
+        return 'text-red-700 dark:text-red-300';
+    };
+
+    return (
+        <div className={`p-4 md:p-6 rounded-xl border-2 transition-all ${getStatusColor(avgNum)}`}>
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 mb-4">
+                <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-sm md:text-base text-gray-800 dark:text-white truncate">
+                        {entry.employee_name}
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{employee?.department || 'HR'}</p>
+                </div>
+                <div className={`flex-shrink-0 text-center px-3 py-1 rounded-full font-black text-sm ${getScoreTextColor(avgNum)}`}>
+                    {avg}%
+                </div>
+            </div>
+
+            {/* Score Inputs Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                {[
+                    { label: 'إنتاجية', field: 'productivity_score', icon: '⚡' },
+                    { label: 'جودة', field: 'quality_score', icon: '✓' },
+                    { label: 'التزام', field: 'attendance_score', icon: '📅' },
+                    { label: 'التزام سلوك', field: 'commitment_score', icon: '👤' }
+                ].map(({ label, field, icon }) => (
+                    <div key={field} className="flex flex-col gap-1">
+                        <label className="text-[10px] md:text-xs font-bold text-gray-600 dark:text-gray-300">
+                            {icon} {label}
+                        </label>
+                        <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={entry[field as keyof KPIEntry] || ''}
+                            onChange={(e) => onScoreChange(entry.employee_id, field as keyof KPIEntry, parseInt(e.target.value) || 0)}
+                            className="w-full px-2 py-2 text-sm font-bold text-center border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                        />
+                    </div>
+                ))}
+            </div>
+
+            {/* Notes Field */}
+            <textarea
+                value={entry.notes}
+                onChange={(e) => onScoreChange(entry.employee_id, 'notes', e.target.value)}
+                placeholder="ملاحظات..."
+                className="w-full px-3 py-2 text-xs md:text-sm border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary outline-none resize-none h-16 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+            />
+        </div>
+    );
+};
+
+// ─── Main Component ────────────────────────────────────────────────────────
 const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [kpiData, setKpiData] = useState<KPIEntry[]>([]);
     const [projectKpiData, setProjectKpiData] = useState<ProjectKPI[]>([]);
     const [loading, setLoading] = useState(true);
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10)); // YYYY-MM-DD
+    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
     const [isSaving, setIsSaving] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
+    const [darkMode, setDarkMode] = useState(false);
+    const [viewMode, setViewMode] = useState<'card' | 'table'>('card'); // card for mobile, table for desktop
+    const touchStartX = useRef(0);
+
+    // Auto-switch view based on screen size
+    useEffect(() => {
+        const handleResize = () => {
+            setViewMode(window.innerWidth >= 1024 ? 'table' : 'card');
+        };
+        window.addEventListener('resize', handleResize);
+        handleResize();
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     useEffect(() => {
         fetchData();
@@ -48,10 +146,9 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            // Fetch active employees
             let empQuery = supabase.from('hr_employees').select('id, full_name, department, employee_code').eq('status', 'active');
 
-            const projectToFilter = (user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'it_specialist' || user.role === 'hr_admin' || user.role === 'project_manager')
+            const projectToFilter = (['super_admin', 'power_admin', 'it_specialist', 'hr_admin', 'project_manager'].includes(user.role))
                 ? (selectedProjectId !== 'all' ? selectedProjectId : null)
                 : user.projectId;
 
@@ -66,7 +163,6 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
             const { data: empData } = await empQuery;
             if (empData) setEmployees(empData);
 
-            // Fetch KPIs for selected date
             let kpiQuery = supabase.from('hr_kpis').select('*').eq('date', selectedDate);
             if (projectToFilter) {
                 const empIds = empData?.map(e => e.id) || [];
@@ -74,7 +170,6 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
             }
             const { data: kpiRecords } = await kpiQuery;
 
-            // Merge: ensure every employee has an entry in local state
             const merged = (empData || []).map(emp => {
                 const record = kpiRecords?.find(r => r.employee_id === emp.id);
                 return {
@@ -91,14 +186,12 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
 
             setKpiData(merged);
 
-            // Fetch projects
             let projQuery = supabase.from('projects').select('id, name');
             if (projectToFilter && projectToFilter !== 'all') {
                 projQuery = projQuery.eq('id', projectToFilter);
             }
             const { data: projData } = await projQuery;
 
-            // Fetch project KPIs for the date
             let projKpiQuery = supabase.from('hr_project_kpis').select('*').eq('date', selectedDate);
             if (projectToFilter && projectToFilter !== 'all') {
                 projKpiQuery = projKpiQuery.eq('project_id', projectToFilter);
@@ -115,7 +208,6 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
                 };
             });
             setProjectKpiData(mergedProjects);
-
         } catch (error) {
             console.error("Error fetching KPIs:", error);
         } finally {
@@ -124,12 +216,9 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
     };
 
     const handleScoreChange = (empId: string, field: keyof KPIEntry, value: any) => {
-        setKpiData(prev => prev.map(rec => {
-            if (rec.employee_id === empId) {
-                return { ...rec, [field]: value };
-            }
-            return rec;
-        }));
+        setKpiData(prev => prev.map(rec =>
+            rec.employee_id === empId ? { ...rec, [field]: value } : rec
+        ));
     };
 
     const saveKPIs = async () => {
@@ -171,172 +260,342 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
         return ((rec.productivity_score + rec.quality_score + rec.attendance_score + rec.commitment_score) / 4).toFixed(1);
     };
 
-    return (
-        <div className="space-y-6 animate-fade-in-up">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100 gap-4">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
-                        <span className="material-icons">analytics</span>
-                    </div>
-                    <div>
-                        <h2 className="text-xl font-bold text-gray-800">تقييم مؤشرات الأداء (KPIs)</h2>
-                        <p className="text-xs text-gray-500">متابعة وتقييم أداء الموظفين اليومي</p>
-                    </div>
-                </div>
+    const siteAverage = (kpiData.reduce((acc, curr) => acc + parseFloat(calculateAverage(curr)), 0) / (kpiData.length || 1)).toFixed(1);
 
-                <div className="flex items-center gap-4">
-                    <input
-                        type="date"
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
-                        className="border border-gray-200 rounded-lg px-4 py-2 font-bold text-gray-700 focus:ring-2 focus:ring-primary outline-none"
-                    />
-                    <button
-                        onClick={saveKPIs}
-                        disabled={isSaving}
-                        className="bg-primary text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-blue-700 transition shadow-sm disabled:opacity-50"
-                    >
-                        <span className="material-icons">{isSaving ? 'hourglass_top' : 'save'}</span>
-                        حفظ التقييمات
-                    </button>
+    const filteredKpiData = kpiData.filter(rec =>
+        (rec.employee_name || '').toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    const topEmployees = [...kpiData].sort((a, b) => parseFloat(calculateAverage(b)) - parseFloat(calculateAverage(a))).slice(0, 3);
+
+    // Swipe gesture handlers for mobile navigation
+    const handleTouchStart = (e: React.TouchEvent) => {
+        touchStartX.current = e.touches[0].clientX;
+    };
+
+    const handleTouchEnd = (e: React.TouchEvent) => {
+        const touchEndX = e.changedTouches[0].clientX;
+        if (touchStartX.current - touchEndX > 50) {
+            // Swiped left
+            setViewMode('table');
+        } else if (touchEndX - touchStartX.current > 50) {
+            // Swiped right
+            setViewMode('card');
+        }
+    };
+
+    return (
+        <div className={`min-h-screen transition-colors ${darkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`} dir="rtl" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+            {/* Header */}
+            <div className={`sticky top-0 z-50 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b shadow-sm`}>
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 md:py-4">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className={`p-2 rounded-lg ${darkMode ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-50 text-purple-600'}`}>
+                                <span className="material-icons">analytics</span>
+                            </div>
+                            <div className="min-w-0">
+                                <h1 className={`text-lg md:text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>تقييم الأداء</h1>
+                                <p className={`text-xs md:text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>متابعة أداء الموظفين</p>
+                            </div>
+                        </div>
+
+                        {/* Controls */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                                onClick={() => setDarkMode(!darkMode)}
+                                className={`p-2 rounded-lg transition-colors touch-target ${darkMode ? 'bg-gray-700 text-yellow-400' : 'bg-gray-100 text-gray-600'}`}
+                                title="تبديل الوضع الليلي"
+                            >
+                                <span className="material-icons">{darkMode ? 'light_mode' : 'dark_mode'}</span>
+                            </button>
+                            <input
+                                type="date"
+                                value={selectedDate}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                                className={`px-3 py-2 text-sm border-2 rounded-lg font-bold focus:ring-2 focus:ring-primary outline-none touch-target ${
+                                    darkMode
+                                        ? 'bg-gray-700 border-gray-600 text-white'
+                                        : 'bg-white border-gray-300 text-gray-700'
+                                }`}
+                            />
+                            <button
+                                onClick={saveKPIs}
+                                disabled={isSaving}
+                                className="bg-primary text-white px-3 md:px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-blue-700 transition shadow-sm disabled:opacity-50 touch-target text-sm md:text-base"
+                            >
+                                <span className="material-icons text-base">{isSaving ? 'hourglass_top' : 'save'}</span>
+                                <span className="hidden sm:inline">حفظ</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Stats Summary Area */}
-                <div className="lg:col-span-1 space-y-4">
-                    <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-6 rounded-2xl text-white shadow-lg">
-                        <h4 className="text-indigo-100 text-sm mb-1">متوسط أداء الموقع</h4>
-                        <div className="text-4xl font-black mb-4">
-                            {(kpiData.reduce((acc, curr) => acc + parseFloat(calculateAverage(curr)), 0) / (kpiData.length || 1)).toFixed(1)}%
-                        </div>
-                        <div className="w-full bg-white/20 rounded-full h-2 overflow-hidden">
-                            <div
-                                className="bg-white h-full transition-all duration-1000"
-                                style={{ width: `${(kpiData.reduce((acc, curr) => acc + parseFloat(calculateAverage(curr)), 0) / (kpiData.length || 1))}%` }}
-                            ></div>
+            {/* Main Content */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6 space-y-6">
+                {/* Summary Stats (Mobile & Desktop) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Site Average */}
+                    <div className={`p-6 rounded-xl shadow-sm border-2 ${
+                        darkMode
+                            ? 'bg-gradient-to-br from-indigo-900 to-purple-900 border-purple-700 text-white'
+                            : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white'
+                    }`}>
+                        <h3 className={`text-sm font-bold mb-2 ${darkMode ? 'text-indigo-200' : 'text-indigo-100'}`}>متوسط الموقع</h3>
+                        <div className="text-3xl md:text-4xl font-black mb-3">{siteAverage}%</div>
+                        <div className={`w-full rounded-full h-2 overflow-hidden ${darkMode ? 'bg-white/10' : 'bg-white/20'}`}>
+                            <div className="bg-white h-full transition-all duration-1000" style={{ width: `${siteAverage}%` }} />
                         </div>
                     </div>
 
-                    <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-                        <h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2 text-sm">
+                    {/* Top Performer */}
+                    <div className={`p-6 rounded-xl shadow-sm border-2 ${
+                        darkMode
+                            ? 'bg-gray-800 border-gray-700'
+                            : 'bg-white border-gray-200'
+                    }`}>
+                        <h3 className={`text-sm font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                             <span className="material-icons text-orange-400">workspace_premium</span>
-                            أفضل الموظفين أداءً
-                        </h4>
-                        <div className="space-y-4">
-                            {[...kpiData].sort((a, b) => parseFloat(calculateAverage(b)) - parseFloat(calculateAverage(a))).slice(0, 3).map((top, idx) => (
-                                <div key={top.employee_id} className="flex items-center justify-between group">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${idx === 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-400'}`}>
-                                            #{idx + 1}
-                                        </div>
-                                        <span className="text-sm font-medium text-gray-600 group-hover:text-primary transition">{top.employee_name}</span>
-                                    </div>
-                                    <span className="text-xs font-black text-gray-400">{calculateAverage(top)}%</span>
+                            أفضل موظف
+                        </h3>
+                        {topEmployees.length > 0 && (
+                            <div>
+                                <div className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                    {topEmployees[0]?.employee_name}
                                 </div>
-                            ))}
-                        </div>
+                                <div className={`text-2xl font-black ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                                    {calculateAverage(topEmployees[0])}%
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-                        <h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2 text-sm">
+                    {/* Project Workload Summary */}
+                    <div className={`p-6 rounded-xl shadow-sm border-2 ${
+                        darkMode
+                            ? 'bg-gray-800 border-gray-700'
+                            : 'bg-white border-gray-200'
+                    }`}>
+                        <h3 className={`text-sm font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            <span className="material-icons text-blue-500">assignment</span>
+                            حجم العمل
+                        </h3>
+                        <div className={`text-2xl font-black ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                            {projectKpiData.reduce((s, p) => s + p.volume, 0)}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Search Bar */}
+                <div className="relative">
+                    <span className={`material-icons absolute right-3 top-1/2 -translate-y-1/2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                        search
+                    </span>
+                    <input
+                        type="text"
+                        placeholder="ابحث عن موظف..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className={`w-full pr-10 pl-4 py-3 border-2 rounded-lg font-bold focus:ring-2 focus:ring-primary outline-none touch-target transition ${
+                            darkMode
+                                ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-500'
+                                : 'bg-white border-gray-300 text-gray-700 placeholder-gray-500'
+                        }`}
+                    />
+                </div>
+
+                {/* KPI Cards / Table View */}
+                {loading ? (
+                    <SkeletonLoader count={5} />
+                ) : filteredKpiData.length === 0 ? (
+                    <div className={`p-12 text-center rounded-xl border-2 ${darkMode ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-300 text-gray-500'}`}>
+                        <span className="material-icons text-4xl opacity-50 mb-2">person_off</span>
+                        <p className="font-bold">لا توجد نتائج</p>
+                    </div>
+                ) : viewMode === 'card' ? (
+                    // Card View (Mobile)
+                    <div className="space-y-4 md:hidden">
+                        {filteredKpiData.map(entry => (
+                            <KPICard
+                                key={entry.employee_id}
+                                entry={entry}
+                                employee={employees.find(e => e.id === entry.employee_id)}
+                                onScoreChange={handleScoreChange}
+                            />
+                        ))}
+                    </div>
+                ) : (
+                    // Table View (Desktop)
+                    <div className={`hidden md:block rounded-xl shadow-sm border-2 overflow-hidden ${
+                        darkMode
+                            ? 'bg-gray-800 border-gray-700'
+                            : 'bg-white border-gray-200'
+                    }`}>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-right">
+                                <thead className={`border-b-2 ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                    <tr>
+                                        <th className={`p-4 font-bold text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>الموظف</th>
+                                        <th className={`p-4 font-bold text-sm text-center ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>الإنتاجية</th>
+                                        <th className={`p-4 font-bold text-sm text-center ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>الجودة</th>
+                                        <th className={`p-4 font-bold text-sm text-center ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>الالتزام</th>
+                                        <th className={`p-4 font-bold text-sm text-center ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>السلوك</th>
+                                        <th className={`p-4 font-bold text-sm text-center ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>المعدل</th>
+                                    </tr>
+                                </thead>
+                                <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+                                    {filteredKpiData.map(rec => {
+                                        const avg = parseFloat(calculateAverage(rec));
+                                        return (
+                                            <tr key={rec.employee_id} className={`hover:bg-opacity-50 transition ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
+                                                <td className={`p-4 font-bold text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                                    {rec.employee_name}
+                                                </td>
+                                                <td className="p-4">
+                                                    <input
+                                                        type="number"
+                                                        min="0" max="100"
+                                                        value={rec.productivity_score}
+                                                        onChange={(e) => handleScoreChange(rec.employee_id, 'productivity_score', parseInt(e.target.value) || 0)}
+                                                        className={`w-16 px-2 py-1 text-sm font-bold text-center border-2 rounded focus:ring-2 focus:ring-primary outline-none ${
+                                                            darkMode
+                                                                ? 'bg-gray-700 border-gray-600 text-white'
+                                                                : 'bg-gray-50 border-gray-300 text-gray-700'
+                                                        }`}
+                                                    />
+                                                </td>
+                                                <td className="p-4">
+                                                    <input
+                                                        type="number"
+                                                        min="0" max="100"
+                                                        value={rec.quality_score}
+                                                        onChange={(e) => handleScoreChange(rec.employee_id, 'quality_score', parseInt(e.target.value) || 0)}
+                                                        className={`w-16 px-2 py-1 text-sm font-bold text-center border-2 rounded focus:ring-2 focus:ring-primary outline-none ${
+                                                            darkMode
+                                                                ? 'bg-gray-700 border-gray-600 text-white'
+                                                                : 'bg-gray-50 border-gray-300 text-gray-700'
+                                                        }`}
+                                                    />
+                                                </td>
+                                                <td className="p-4">
+                                                    <input
+                                                        type="number"
+                                                        min="0" max="100"
+                                                        value={rec.attendance_score}
+                                                        onChange={(e) => handleScoreChange(rec.employee_id, 'attendance_score', parseInt(e.target.value) || 0)}
+                                                        className={`w-16 px-2 py-1 text-sm font-bold text-center border-2 rounded focus:ring-2 focus:ring-primary outline-none ${
+                                                            darkMode
+                                                                ? 'bg-gray-700 border-gray-600 text-white'
+                                                                : 'bg-gray-50 border-gray-300 text-gray-700'
+                                                        }`}
+                                                    />
+                                                </td>
+                                                <td className="p-4">
+                                                    <input
+                                                        type="number"
+                                                        min="0" max="100"
+                                                        value={rec.commitment_score}
+                                                        onChange={(e) => handleScoreChange(rec.employee_id, 'commitment_score', parseInt(e.target.value) || 0)}
+                                                        className={`w-16 px-2 py-1 text-sm font-bold text-center border-2 rounded focus:ring-2 focus:ring-primary outline-none ${
+                                                            darkMode
+                                                                ? 'bg-gray-700 border-gray-600 text-white'
+                                                                : 'bg-gray-50 border-gray-300 text-gray-700'
+                                                        }`}
+                                                    />
+                                                </td>
+                                                <td className={`p-4 text-center font-black text-sm ${avg >= 75 ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'}`}>
+                                                    {calculateAverage(rec)}%
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* Project KPI Inputs */}
+                {projectKpiData.length > 0 && (
+                    <div className={`p-6 rounded-xl shadow-sm border-2 ${
+                        darkMode
+                            ? 'bg-gray-800 border-gray-700'
+                            : 'bg-white border-gray-200'
+                    }`}>
+                        <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
                             <span className="material-icons text-blue-500">assignment</span>
                             حجم العمل للمشاريع
-                        </h4>
-                        <div className="space-y-4">
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {projectKpiData.map(p => (
-                                <div key={p.project_id} className="flex flex-col gap-1">
-                                    <div className="text-sm font-medium text-gray-700">{p.project_name}</div>
+                                <div key={p.project_id} className="flex flex-col gap-2">
+                                    <label className={`font-bold text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                        {p.project_name}
+                                    </label>
                                     <input
                                         type="number"
                                         min="0"
                                         value={p.volume || ''}
                                         onChange={(e) => setProjectKpiData(prev => prev.map(rec => rec.project_id === p.project_id ? { ...rec, volume: parseInt(e.target.value) || 0 } : rec))}
-                                        className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary outline-none"
+                                        className={`w-full px-3 py-2 border-2 rounded-lg font-bold text-sm focus:ring-2 focus:ring-primary outline-none touch-target transition ${
+                                            darkMode
+                                                ? 'bg-gray-700 border-gray-600 text-white'
+                                                : 'bg-white border-gray-300 text-gray-700'
+                                        }`}
                                         placeholder="حجم العمل"
                                     />
                                 </div>
                             ))}
-                            {projectKpiData.length === 0 && (
-                                <div className="text-xs text-center text-gray-400">لا توجد مشاريع مخصصة</div>
-                            )}
                         </div>
                     </div>
-                </div>
+                )}
+            </div>
 
-                {/* KPI Input Table */}
-                <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                    {loading ? (
-                        <div className="p-20 text-center text-gray-400">جاري تحميل البيانات...</div>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-right">
-                                <thead className="bg-gray-50 text-gray-500 text-xs border-b">
-                                    <tr>
-                                        <th className="p-4 font-bold">الموظف</th>
-                                        <th className="p-4 font-bold text-center">الإنتاجية</th>
-                                        <th className="p-4 font-bold text-center">الجودة</th>
-                                        <th className="p-4 font-bold text-center">المظهر العام</th>
-                                        <th className="p-4 font-bold text-center">الالتزام</th>
-                                        <th className="p-4 font-bold text-center">المعدل</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-50">
-                                    {kpiData.map(rec => (
-                                        <tr key={rec.employee_id} className="hover:bg-gray-50 transition-colors">
-                                            <td className="p-4">
-                                                <div className="font-bold text-gray-800 text-sm">{rec.employee_name}</div>
-                                                <div className="text-[10px] text-gray-400">{employees.find(e => e.id === rec.employee_id)?.department || 'HR'}</div>
-                                            </td>
-                                            <td className="p-4">
-                                                <input
-                                                    type="number"
-                                                    min="0" max="100"
-                                                    value={rec.productivity_score}
-                                                    onChange={(e) => handleScoreChange(rec.employee_id, 'productivity_score', parseInt(e.target.value) || 0)}
-                                                    className="w-16 p-1 border rounded text-center text-xs focus:ring-1 focus:ring-primary"
-                                                />
-                                            </td>
-                                            <td className="p-4">
-                                                <input
-                                                    type="number"
-                                                    min="0" max="100"
-                                                    value={rec.quality_score}
-                                                    onChange={(e) => handleScoreChange(rec.employee_id, 'quality_score', parseInt(e.target.value) || 0)}
-                                                    className="w-16 p-1 border rounded text-center text-xs focus:ring-1 focus:ring-primary"
-                                                />
-                                            </td>
-                                            <td className="p-4">
-                                                <input
-                                                    type="number"
-                                                    min="0" max="100"
-                                                    value={rec.attendance_score}
-                                                    onChange={(e) => handleScoreChange(rec.employee_id, 'attendance_score', parseInt(e.target.value) || 0)}
-                                                    className="w-16 p-1 border rounded text-center text-xs focus:ring-1 focus:ring-primary"
-                                                />
-                                            </td>
-                                            <td className="p-4">
-                                                <input
-                                                    type="number"
-                                                    min="0" max="100"
-                                                    value={rec.commitment_score}
-                                                    onChange={(e) => handleScoreChange(rec.employee_id, 'commitment_score', parseInt(e.target.value) || 0)}
-                                                    className="w-16 p-1 border rounded text-center text-xs focus:ring-1 focus:ring-primary"
-                                                />
-                                            </td>
-                                            <td className="p-4 text-center">
-                                                <span className={`px-2 py-1 rounded-full text-[10px] font-black ${parseFloat(calculateAverage(rec)) > 75 ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                                                    {calculateAverage(rec)}%
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
+            {/* Mobile Bottom Navigation */}
+            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t-2 border-gray-200 dark:border-gray-700 shadow-lg">
+                <div className="flex items-center justify-around px-4 py-3">
+                    <button
+                        onClick={() => setViewMode('card')}
+                        className={`flex flex-col items-center gap-1 p-2 rounded-lg transition touch-target ${
+                            viewMode === 'card'
+                                ? 'bg-primary/10 text-primary'
+                                : darkMode ? 'text-gray-400' : 'text-gray-600'
+                        }`}
+                    >
+                        <span className="material-icons">view_agenda</span>
+                        <span className="text-xs font-bold">بطاقات</span>
+                    </button>
+                    <button
+                        onClick={() => setViewMode('table')}
+                        className={`flex flex-col items-center gap-1 p-2 rounded-lg transition touch-target ${
+                            viewMode === 'table'
+                                ? 'bg-primary/10 text-primary'
+                                : darkMode ? 'text-gray-400' : 'text-gray-600'
+                        }`}
+                    >
+                        <span className="material-icons">table_chart</span>
+                        <span className="text-xs font-bold">جدول</span>
+                    </button>
                 </div>
             </div>
+
+            {/* Safety padding for mobile nav */}
+            <div className="md:hidden h-20" />
+
+            <style>{`
+                .touch-target {
+                    min-height: 44px;
+                    min-width: 44px;
+                }
+                @media (prefers-reduced-motion: reduce) {
+                    * {
+                        animation-duration: 0.01ms !important;
+                        animation-iteration-count: 1 !important;
+                        transition-duration: 0.01ms !important;
+                    }
+                }
+            `}</style>
         </div>
     );
 };
