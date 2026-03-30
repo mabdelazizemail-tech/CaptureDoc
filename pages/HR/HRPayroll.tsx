@@ -140,7 +140,8 @@ const HRPayroll: React.FC<HRPayrollProps> = ({ user, selectedProjectId }) => {
 
             const merged = (empData || []).map(emp => {
                 const record = payRecords?.find(r => r.employee_id === emp.id);
-                const basic    = record ? parseFloat(record.basic_salary || '0') : parseFloat(emp.basic_salary || '0');
+                // Always pull salary from employee profile (master data), never from saved payroll record
+                const basic    = parseFloat(emp.basic_salary || '0');
                 const variable = parseFloat(emp.variable_salary || '0');
                 const insSal   = parseFloat(emp.insurance_salary || '0');
 
@@ -300,7 +301,8 @@ const HRPayroll: React.FC<HRPayrollProps> = ({ user, selectedProjectId }) => {
             setPayrollData(prev => prev.map(rec => {
                 if (rec.status !== 'draft') return rec;
                 const emp = employees.find(e => e.id === rec.employee_id);
-                return calculatePayrollRow({ ...rec, employee_percent: undefined }, rec.basic_salary, emp?.variable_salary || 0, emp?.insurance_salary || 0);
+                // Always use latest employee master data, not saved payroll record
+                return calculatePayrollRow({ ...rec, employee_percent: undefined }, emp?.basic_salary || 0, emp?.variable_salary || 0, emp?.insurance_salary || 0);
             }));
         }
     }, [globalPercent]);
@@ -311,7 +313,8 @@ const HRPayroll: React.FC<HRPayrollProps> = ({ user, selectedProjectId }) => {
             if (rec.employee_id !== empId || rec.status === 'finalized') return rec;
             const newRec = { ...rec, [field]: value };
             const emp = employees.find(e => e.id === empId);
-            return calculatePayrollRow(newRec, newRec.basic_salary, emp?.variable_salary || 0, emp?.insurance_salary || 0);
+            // Always use latest employee master data, not saved payroll record
+            return calculatePayrollRow(newRec, emp?.basic_salary || 0, emp?.variable_salary || 0, emp?.insurance_salary || 0);
         }));
     };
 
@@ -324,7 +327,8 @@ const HRPayroll: React.FC<HRPayrollProps> = ({ user, selectedProjectId }) => {
             else
                 newRec.target_achieved = Math.round(percentVal);
             const emp = employees.find(e => e.id === empId);
-            return calculatePayrollRow(newRec, newRec.basic_salary, emp?.variable_salary || 0, emp?.insurance_salary || 0);
+            // Always use latest employee master data, not saved payroll record
+            return calculatePayrollRow(newRec, emp?.basic_salary || 0, emp?.variable_salary || 0, emp?.insurance_salary || 0);
         }));
     };
 
