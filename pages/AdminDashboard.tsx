@@ -37,6 +37,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
     const [projectManagers, setProjectManagers] = useState<User[]>([]);
     const [itSpecialists, setItSpecialists] = useState<User[]>([]);
     const [hrAdmins, setHrAdmins] = useState<User[]>([]);
+    const [superAdmins, setSuperAdmins] = useState<User[]>([]);
+    const [powerAdmins, setPowerAdmins] = useState<User[]>([]);
     const [allProjectManagers, setAllProjectManagers] = useState<User[]>([]);
     const [projectUsers, setProjectUsers] = useState<User[]>([]);
     const [operators, setOperators] = useState<Operator[]>([]);
@@ -96,7 +98,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
 
     // User Management
     const [userSearchTerm, setUserSearchTerm] = useState('');
-    const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'project_manager' | 'supervisor' | 'it_specialist' | 'hr_admin'>('all');
+    const [userRoleFilter, setUserRoleFilter] = useState<'all' | Role>('all');
+    const [userSortConfig, setUserSortConfig] = useState<{ key: keyof User | null, direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
+    const [opSortConfig, setOpSortConfig] = useState<{ key: keyof Operator | null, direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
 
     // Lookup for User Management
     const [allRegisteredProfiles, setAllRegisteredProfiles] = useState<User[]>([]);
@@ -260,15 +264,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
         await fetchTicketsOnly();
         await fetchPendingLogs(projectId);
 
-        // Categorize Users
+        // Categorize Users (STRICTLY MAP ALL ROLES)
+        const s_admins = users.filter(u => u.role === 'super_admin');
+        const p_admins = users.filter(u => u.role === 'power_admin');
         let pms = users.filter(u => u.role === 'project_manager');
         const sups = users.filter(u => u.role === 'supervisor');
         const its = users.filter(u => u.role === 'it_specialist');
         const hrs = users.filter(u => u.role === 'hr_admin');
 
         // If viewing a specific project, ensure the assigned PM is visible even if their profile is global?
-        // Actually StorageService.getUsers(pid) handles getting users for that project.
-        // Logic below merges PMs if not found, to be safe.
         if (projectId !== 'all') {
             const proj = projects.find(p => p.id === projectId) || (currentProject?.id === projectId ? currentProject : null);
             if (proj && proj.pmId) {
@@ -279,11 +283,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
             }
         }
 
+        setSuperAdmins(s_admins);
+        setPowerAdmins(p_admins);
         setSupervisors(sups);
         setProjectManagers(pms);
         setItSpecialists(its);
         setHrAdmins(hrs);
-        setProjectUsers([...sups, ...pms, ...its, ...hrs]);
+        setProjectUsers(users);
         setOperators(ops);
         setAssets(assts);
         setLogs(lgs);
@@ -627,18 +633,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
 
         // Determine initial assigned projects for PM
         let assignedProjects: string[] = [];
-        if (user.role === 'project_manager' && user.id) {
-            // Find projects where pmId matches user.id
-            assignedProjects = projects.filter(p => p.pmId === user.id).map(p => p.id);
+        if (user.id && user.role === 'project_manager') {
+             assignedProjects = projects.filter(p => p.pmId === user.id).map(p => p.id);
+        } else if (!user.id && (user as any).targetProjectIds) {
+             assignedProjects = (user as any).targetProjectIds;
         }
 
         // Check if user object is empty (creation mode)
         if (!user.id) {
             setEditingSupervisor(null);
             setLinkedUserId(null);
-            // Default role based on context if needed, otherwise supervisor
-            const defaultRole = newSupervisor.role || 'supervisor';
-            setNewSupervisor({ name: '', teamName: '', username: '', password: '', role: defaultRole, reportsTo: '', targetProjectId: targetPid, targetProjectIds: [] });
+            setNewSupervisor({
+                name: user.name || '',
+                teamName: user.teamName || '',
+                username: user.username || '',
+                password: '', // Never copy password
+                role: user.role || 'supervisor',
+                reportsTo: user.reportsTo || '',
+                targetProjectId: user.projectId || targetPid,
+                targetProjectIds: assignedProjects
+            });
         } else {
             setEditingSupervisor(user);
             setLinkedUserId(null); // Editing existing logic assumes user is already linked/created
@@ -654,6 +668,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
             });
         }
         setShowUserModal(true);
+    };
+
+    const handleCopyUser = (user: User) => {
+        // Deep copy without ID and slightly modified username/name
+        const copy: User = {
+            ...user,
+            id: '',
+            username: `copy_${user.username}`,
+            name: `${user.name} (Copy)`
+        };
+        startEditUser(copy);
     };
 
     const handleCloseUserModal = () => {
@@ -823,11 +848,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
 
     const openOpModal = (op: Operator | null, supId: string = '') => {
         if (op) {
-            setOpForm({ id: op.id, name: op.name, phone: op.phone, supervisorId: op.supervisorId });
+            setOpForm({ id: op.id, name: op.name, phone: op.phone || '', supervisorId: op.supervisorId });
         } else {
             setOpForm({ id: `op-${Date.now()}`, name: '', phone: '', supervisorId: supId });
         }
         setShowOpModal(true);
+    };
+
+    const handleCopyOperator = (op: Operator) => {
+        const copy: Operator = {
+            ...op,
+            id: `op-${Date.now()}`,
+            name: `${op.name} (Copy)`
+        };
+        openOpModal(copy);
+    };
+
+    const handleDeleteOperator = (op: Operator) => {
+        confirmAction(
+            `هل أنت متأكد من حذف الموظف "${op.name}"؟`,
+            async () => {
+                await StorageService.deleteOperators([op.id]);
+                loadProjectData(currentProject!.id);
+                showToast('تم حذف الموظف بنجاح', 'info');
+                closeConfirmModal();
+            },
+            true
+        );
     };
 
     const saveOperator = async (e: React.FormEvent) => {
@@ -1394,6 +1441,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
                                         {isSuperAdmin && <option value="project_manager">مدير مشروع</option>}
                                         <option value="it_specialist">أخصائي تكنولوجيا المعلومات</option>
                                         {(isSuperAdmin || currentUser.role === 'hr_admin') && <option value="hr_admin">مسؤول الموارد البشرية</option>}
+                                        {isSuperAdmin && <option value="power_admin">مسؤول تنفيذي (Power Admin)</option>}
+                                        {currentUser.role === 'super_admin' && <option value="super_admin">المدير العام (Super Admin)</option>}
                                     </select>
                                 </div>
                             )}
@@ -1676,34 +1725,67 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
                                     <table className="w-full text-right text-sm">
                                         <thead className="bg-gray-50 text-gray-500 font-bold uppercase rounded-lg">
                                             <tr>
-                                                <th className="p-4 rounded-r-lg">الاسم</th>
-                                                <th className="p-4">الدور</th>
+                                                <th className="p-4 rounded-r-lg cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => {
+                                                    const direction = userSortConfig.key === 'name' && userSortConfig.direction === 'asc' ? 'desc' : 'asc';
+                                                    setUserSortConfig({ key: 'name', direction });
+                                                }}>
+                                                    <div className="flex items-center gap-1">الاسم <span className="material-icons text-xs">{userSortConfig.key === 'name' ? (userSortConfig.direction === 'asc' ? 'expand_less' : 'expand_more') : 'unfold_more'}</span></div>
+                                                </th>
+                                                <th className="p-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => {
+                                                    const direction = userSortConfig.key === 'role' && userSortConfig.direction === 'asc' ? 'desc' : 'asc';
+                                                    setUserSortConfig({ key: 'role', direction });
+                                                }}>
+                                                    <div className="flex items-center gap-1">الدور <span className="material-icons text-xs">{userSortConfig.key === 'role' ? (userSortConfig.direction === 'asc' ? 'expand_less' : 'expand_more') : 'unfold_more'}</span></div>
+                                                </th>
                                                 <th className="p-4">الفريق / التقارير</th>
                                                 {currentProject.id === 'all' && <th className="p-4">المشروع</th>}
                                                 <th className="p-4 text-center rounded-l-lg">إجراء</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
-                                            {supervisors.concat(projectManagers).concat(itSpecialists).concat(hrAdmins)
+                                            {[...projectUsers]
+                                                .sort((a, b) => {
+                                                    if (!userSortConfig.key) return 0;
+                                                    let aVal = a[userSortConfig.key] || '';
+                                                    let bVal = b[userSortConfig.key] || '';
+                                                    if (aVal < bVal) return userSortConfig.direction === 'asc' ? -1 : 1;
+                                                    if (aVal > bVal) return userSortConfig.direction === 'asc' ? 1 : -1;
+                                                    return 0;
+                                                })
                                                 .filter(u => {
-                                                    // FIXED: NULL SAFETY CHECK FOR USER NAME
+                                                    // FIXED: NULL SAFETY CHECK FOR USER NAME AND FILTERS
                                                     const userName = u.name || '';
-                                                    const matchesSearch = userName.toLowerCase().includes(userSearchTerm.toLowerCase());
+                                                    const matchesSearch = userName.toLowerCase().includes(userSearchTerm.toLowerCase()) || 
+                                                                        (u.username || '').toLowerCase().includes(userSearchTerm.toLowerCase());
                                                     const matchesRole = userRoleFilter === 'all' || u.role === userRoleFilter;
                                                     return matchesSearch && matchesRole;
                                                 })
-                                                .sort((a, b) => a.role.localeCompare(b.role))
                                                 .map(u => (
-                                                    <tr key={u.id} className="hover:bg-gray-50">
+                                                    <tr key={u.id} className="hover:bg-gray-50 transition-colors">
                                                         <td className="p-4 font-bold text-gray-800 flex items-center gap-2">
                                                             <div className="relative">
                                                                 <div className={`h-3 w-3 rounded-full ${onlineUsers.has(u.id) ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`}></div>
                                                             </div>
-                                                            {u.name || <span className="text-gray-400 italic">Unknown</span>}
+                                                            <div className="flex flex-col">
+                                                                <span>{u.name || <span className="text-gray-400 italic">Unnamed User</span>}</span>
+                                                                <span className="text-[10px] text-gray-400 font-mono">{u.username}</span>
+                                                            </div>
                                                         </td>
                                                         <td className="p-4">
-                                                            <span className={`px-2 py-1 rounded text-xs ${u.role === 'project_manager' ? 'bg-purple-100 text-purple-700' : u.role === 'it_specialist' ? 'bg-cyan-100 text-cyan-700' : u.role === 'hr_admin' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                                {u.role === 'project_manager' ? 'مدير مشروع' : u.role === 'it_specialist' ? 'أخصائي IT' : u.role === 'hr_admin' ? 'مسؤول الموارد البشرية' : 'مشرف'}
+                                                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                                                u.role === 'super_admin' ? 'bg-red-100 text-red-700' : 
+                                                                u.role === 'power_admin' ? 'bg-indigo-100 text-indigo-700' : 
+                                                                u.role === 'project_manager' ? 'bg-purple-100 text-purple-700' : 
+                                                                u.role === 'it_specialist' ? 'bg-cyan-100 text-cyan-700' : 
+                                                                u.role === 'hr_admin' ? 'bg-orange-100 text-orange-700' : 
+                                                                'bg-blue-100 text-blue-700'
+                                                            }`}>
+                                                                {u.role === 'super_admin' ? 'Super Admin' : 
+                                                                 u.role === 'power_admin' ? 'Executive' : 
+                                                                 u.role === 'project_manager' ? 'PM' : 
+                                                                 u.role === 'it_specialist' ? 'IT' : 
+                                                                 u.role === 'hr_admin' ? 'HR' : 
+                                                                 'Supervisor'}
                                                             </span>
                                                         </td>
                                                         <td className="p-4 text-gray-600">
@@ -1718,12 +1800,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
                                                         </td>
                                                         {currentProject.id === 'all' && (
                                                             <td className="p-4 text-gray-600">
-                                                                {projects.find(p => p.id === u.projectId)?.name || 'غير محدد (Global)'}
+                                                                {projects.find(p => p.id === u.projectId)?.name || <span className="text-gray-400 italic">Global</span>}
                                                             </td>
                                                         )}
-                                                        <td className="p-4 flex justify-center gap-2">
-                                                            <button onClick={() => startEditUser(u)} className={`p-2 rounded text-orange-500 bg-orange-50 hover:bg-orange-100`} title="تعديل"><span className="material-icons text-sm">edit</span></button>
-                                                            <button onClick={() => handleDeleteSupervisor(u.id)} className={`p-2 rounded text-red-500 bg-red-50 hover:bg-red-100`} title="حذف"><span className="material-icons text-sm">delete</span></button>
+                                                        <td className="p-4">
+                                                            <div className="flex justify-center gap-2">
+                                                                <button onClick={() => startEditUser(u)} className="p-2 rounded text-blue-500 bg-blue-50 hover:bg-blue-100 transition-colors" title="Edit"><span className="material-icons text-sm">edit</span></button>
+                                                                <button onClick={() => handleCopyUser(u)} className="p-2 rounded text-green-500 bg-green-50 hover:bg-green-100 transition-colors" title="Copy"><span className="material-icons text-sm">content_copy</span></button>
+                                                                <button onClick={() => handleDeleteSupervisor(u.id)} className="p-2 rounded text-red-500 bg-red-50 hover:bg-red-100 transition-colors" title="Delete"><span className="material-icons text-sm">delete</span></button>
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -1753,19 +1838,48 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
                                     <table className="w-full text-right text-sm">
                                         <thead className="bg-gray-50 text-gray-500 font-bold uppercase rounded-lg">
                                             <tr>
-                                                <th className="p-4 w-10 text-center"><input type="checkbox" disabled={currentProject.id === 'all'} className="w-4 h-4 rounded text-primary" onChange={() => toggleSelectAll(operators.filter(o => o.name.includes(searchTerm)))} /></th>
-                                                <th className="p-4">الاسم</th>
+                                                <th className="p-4 w-10 text-center"><input type="checkbox" disabled={currentProject.id === 'all'} className="w-4 h-4 rounded text-primary" onChange={() => toggleSelectAll(operators.filter(o => o.name.toLowerCase().includes(searchTerm.toLowerCase())))} /></th>
+                                                <th className="p-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => {
+                                                    const direction = opSortConfig.key === 'name' && opSortConfig.direction === 'asc' ? 'desc' : 'asc';
+                                                    setOpSortConfig({ key: 'name', direction });
+                                                }}>
+                                                    <div className="flex items-center gap-1">الاسم <span className="material-icons text-xs">{opSortConfig.key === 'name' ? (opSortConfig.direction === 'asc' ? 'expand_less' : 'expand_more') : 'unfold_more'}</span></div>
+                                                </th>
                                                 <th className="p-4">المشرف</th>
                                                 <th className="p-4">الهاتف</th>
+                                                <th className="p-4 text-center">إجراء</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
-                                            {operators.filter(o => o.name.includes(searchTerm)).map(op => (
-                                                <tr key={op.id} className={`hover:bg-gray-50 ${selectedIds.has(op.id) ? 'bg-blue-50' : ''}`}>
+                                            {[...operators]
+                                                .sort((a, b) => {
+                                                    if (!opSortConfig.key) return 0;
+                                                    let aVal = (a[opSortConfig.key] || '') as string;
+                                                    let bVal = (b[opSortConfig.key] || '') as string;
+                                                    if (aVal < bVal) return opSortConfig.direction === 'asc' ? -1 : 1;
+                                                    if (aVal > bVal) return opSortConfig.direction === 'asc' ? 1 : -1;
+                                                    return 0;
+                                                })
+                                                .filter(o => 
+                                                o.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                                (o.phone || '').includes(searchTerm)
+                                            ).map(op => (
+                                                <tr key={op.id} className={`hover:bg-gray-50 transition-colors ${selectedIds.has(op.id) ? 'bg-blue-50/50' : ''}`}>
                                                     <td className="p-4 text-center"><input type="checkbox" disabled={currentProject.id === 'all'} className="w-4 h-4 rounded text-primary" checked={selectedIds.has(op.id)} onChange={() => toggleSelect(op.id)} /></td>
                                                     <td className="p-4 font-bold text-gray-800">{op.name}</td>
-                                                    <td className="p-4 text-gray-600">{supervisors.find(s => s.id === op.supervisorId)?.name}</td>
-                                                    <td className="p-4 font-mono text-gray-500">{op.phone}</td>
+                                                    <td className="p-4 text-gray-600">
+                                                        <span className="bg-gray-100 px-2 py-1 rounded-full text-[10px] text-gray-500">
+                                                            {supervisors.find(s => s.id === op.supervisorId)?.name || 'غير محدد'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-4 font-mono text-gray-500 text-xs">{op.phone || '-'}</td>
+                                                    <td className="p-4">
+                                                        <div className="flex justify-center gap-2">
+                                                            <button onClick={() => openOpModal(op)} className="p-1.5 rounded text-blue-500 hover:bg-blue-50 transition-all focus:ring-2 focus:ring-blue-100" title="Edit"><span className="material-icons text-sm">edit</span></button>
+                                                            <button onClick={() => handleCopyOperator(op)} className="p-1.5 rounded text-green-500 hover:bg-green-50 transition-all focus:ring-2 focus:ring-green-100" title="Copy"><span className="material-icons text-sm">content_copy</span></button>
+                                                            <button onClick={() => handleDeleteOperator(op)} className="p-1.5 rounded text-red-500 hover:bg-red-50 transition-all focus:ring-2 focus:ring-red-100" title="Delete"><span className="material-icons text-sm">delete</span></button>
+                                                        </div>
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>

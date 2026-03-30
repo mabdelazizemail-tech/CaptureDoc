@@ -45,6 +45,7 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
     const [projectsList, setProjectsList] = useState<{ id: string; name: string }[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
+    const [sortConfig, setSortConfig] = useState<{ key: keyof Employee | null, direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
 
     useEffect(() => {
         fetchEmployees();
@@ -186,6 +187,18 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
     };
 
 
+    const handleCopy = (emp: Employee) => {
+        const copy: Partial<Employee> = { 
+            ...emp, 
+            id: undefined, 
+            full_name: `${emp.full_name} (نسخة)`,
+            email: `copy_${emp.email}`,
+            employee_code: `${emp.employee_code}_copy`
+        };
+        setEditingEmp(copy);
+        setShowModal(true);
+    };
+
     const formatDateForDB = (val: any) => {
         if (!val) return null;
         // Handle Excel serial dates if they come as numbers
@@ -303,11 +316,38 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
         XLSX.writeFile(workbook, 'Employees_Upload_Template.xlsx');
     };
 
-    const filteredEmployees = employees.filter(emp =>
+    const requestSort = (key: keyof Employee) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
+
+    const sortedEmployees = [...employees].sort((a, b) => {
+        if (!sortConfig.key) return 0;
+        const key = sortConfig.key;
+        let aVal = a[key];
+        let bVal = b[key];
+
+        if (aVal === null || aVal === undefined) aVal = '';
+        if (bVal === null || bVal === undefined) bVal = '';
+
+        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    const filteredEmployees = sortedEmployees.filter(emp =>
         emp.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (emp.employee_code && emp.employee_code.includes(searchQuery)) ||
         (emp.national_id && emp.national_id.includes(searchQuery))
     );
+
+    const getSortIcon = (key: keyof Employee) => {
+        if (sortConfig.key !== key) return 'unfold_more';
+        return sortConfig.direction === 'asc' ? 'expand_less' : 'expand_more';
+    };
 
     return (
         <div className="space-y-6">
@@ -370,91 +410,121 @@ const HREmployees: React.FC<HREmployeesProps> = ({ user, selectedProjectId }) =>
                 </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col max-h-[calc(100vh-250px)] overflow-hidden">
                 {loading ? (
                     <div className="p-8 text-center text-gray-500">جاري التحميل...</div>
                 ) : (
-                    <table className="w-full text-right">
-                        <thead className="bg-gray-50 border-b">
-                            <tr>
-                                <th className="p-4 w-10">
-                                    <input
-                                        type="checkbox"
-                                        className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
-                                        checked={filteredEmployees.length > 0 && selectedEmployees.length === filteredEmployees.length}
-                                        onChange={(e) => {
-                                            if (e.target.checked) setSelectedEmployees(filteredEmployees.map(emp => emp.id));
-                                            else setSelectedEmployees([]);
-                                        }}
-                                    />
-                                </th>
-                                <th className="p-4 font-bold text-gray-600">الاسم</th>
-                                <th className="p-4 font-bold text-gray-600">الرقم الوظيفي</th>
-                                <th className="p-4 font-bold text-gray-600">المسمى الوظيفي</th>
-                                <th className="p-4 font-bold text-gray-600">الأساسي</th>
-                                <th className="p-4 font-bold text-gray-600">الحالة</th>
-                                <th className="p-4 font-bold text-gray-600">إجراء</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredEmployees.map(emp => (
-                                <tr key={emp.id} className="border-b hover:bg-gray-50">
-                                    <td className="p-4">
-                                        <input
-                                            type="checkbox"
-                                            className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
-                                            checked={selectedEmployees.includes(emp.id)}
-                                            onChange={(e) => {
-                                                if (e.target.checked) setSelectedEmployees([...selectedEmployees, emp.id]);
-                                                else setSelectedEmployees(selectedEmployees.filter(id => id !== emp.id));
-                                            }}
-                                        />
-                                    </td>
-                                    <td className="p-4">
-                                        <div className="font-bold">{emp.full_name}</div>
-                                        <div className="text-xs text-gray-500">{emp.email} <span className="opacity-50 mx-1">|</span> {emp.phone || "بدون هاتف"}</div>
-                                    </td>
-                                    <td className="p-4 font-mono text-sm text-gray-500">{emp.employee_code || '-'}</td>
-                                    <td className="p-4">
-                                        <div>{emp.job_title || '-'}</div>
-                                        <div className="text-xs text-gray-500">{emp.department || '-'}</div>
-                                    </td>
-                                    <td className="p-4 text-green-600 font-bold">{emp.basic_salary} EGP</td>
-                                    <td className="p-4 text-center font-bold text-blue-600">{emp.annual_leave_balance ?? 21}</td>
-                                    <td className="p-4">
-                                        <span className={`px-2 py-1 rounded text-xs font-bold ${emp.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                            {emp.status === 'active' ? 'نشط' : 'غير نشط'}
-                                        </span>
-                                    </td>
-                                    <td className="p-4 flex gap-2">
-                                        <button
-                                            onClick={() => { setEditingEmp(emp); setShowModal(true); }}
-                                            className="text-blue-500 hover:text-blue-700 p-2 bg-blue-50 rounded"
-                                            title="تعديل"
-                                        >
-                                            <span className="material-icons text-sm">edit</span>
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                if (confirm(`هل أنت متأكد من حذف ${emp.full_name}؟`)) {
-                                                    supabase.rpc('hr_delete_employees', { p_ids: [emp.id] }).then(() => fetchEmployees());
-                                                }
-                                            }}
-                                            className="text-red-500 hover:text-red-700 p-2 bg-red-50 rounded"
-                                            title="حذف"
-                                        >
-                                            <span className="material-icons text-sm">delete</span>
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                            {filteredEmployees.length === 0 && (
-                                <tr><td colSpan={7} className="p-8 text-center text-gray-400">لا يوجد بيانات للعرض.</td></tr>
-                            )}
-                        </tbody>
-                    </table>
+                    <>
+                        {/* Fixed Header Section (No Scroll) */}
+                        <div className="bg-gray-50 border-b">
+                            <table className="w-full text-right border-collapse table-fixed">
+                                <thead>
+                                    <tr>
+                                        <th className="p-4 w-12 bg-gray-50">
+                                            <input
+                                                type="checkbox"
+                                                className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
+                                                checked={filteredEmployees.length > 0 && selectedEmployees.length === filteredEmployees.length}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) setSelectedEmployees(filteredEmployees.map(emp => emp.id));
+                                                    else setSelectedEmployees([]);
+                                                }}
+                                            />
+                                        </th>
+                                        <th className="p-4 w-[20%] font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 text-xs" onClick={() => requestSort('full_name')}>
+                                            <div className="flex items-center gap-1">
+                                                الاسم
+                                                <span className="material-icons text-sm opacity-50">{getSortIcon('full_name')}</span>
+                                            </div>
+                                        </th>
+                                        <th className="p-4 w-[12%] font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 text-xs" onClick={() => requestSort('employee_code')}>
+                                            <div className="flex items-center gap-1">
+                                                كود
+                                                <span className="material-icons text-sm opacity-50">{getSortIcon('employee_code')}</span>
+                                            </div>
+                                        </th>
+                                        <th className="p-4 w-[18%] font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 text-xs" onClick={() => requestSort('job_title')}>
+                                            <div className="flex items-center gap-1">
+                                                المسمى الوظيفي
+                                                <span className="material-icons text-sm opacity-50">{getSortIcon('job_title')}</span>
+                                            </div>
+                                        </th>
+                                        <th className="p-4 w-[10%] font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 text-xs" onClick={() => requestSort('basic_salary')}>
+                                            <div className="flex items-center gap-1">
+                                                الأساسي
+                                                <span className="material-icons text-sm opacity-50">{getSortIcon('basic_salary')}</span>
+                                            </div>
+                                        </th>
+                                        <th className="p-4 w-[12%] font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 text-xs" onClick={() => requestSort('annual_leave_balance')}>
+                                            <div className="flex items-center gap-1 text-[10px]">
+                                                رصيد الإجازات
+                                                <span className="material-icons text-sm opacity-50">{getSortIcon('annual_leave_balance')}</span>
+                                            </div>
+                                        </th>
+                                        <th className="p-4 w-[8%] font-bold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 text-xs" onClick={() => requestSort('status')}>
+                                            <div className="flex items-center gap-1">
+                                                الحالة
+                                                <span className="material-icons text-sm opacity-50">{getSortIcon('status')}</span>
+                                            </div>
+                                        </th>
+                                        <th className="p-4 w-[15%] font-bold text-gray-600 bg-gray-50 text-xs">إجراء</th>
+                                    </tr>
+                                </thead>
+                            </table>
+                        </div>
+
+                        {/* Scrollable Body Section */}
+                        <div className="overflow-y-auto flex-1">
+                            <table className="w-full text-right border-collapse table-fixed">
+                                <tbody className="divide-y divide-gray-100">
+                                    {filteredEmployees.map(emp => (
+                                        <tr key={emp.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="p-4 w-12 text-center">
+                                                <input
+                                                    type="checkbox"
+                                                    className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
+                                                    checked={selectedEmployees.includes(emp.id)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) setSelectedEmployees([...selectedEmployees, emp.id]);
+                                                        else setSelectedEmployees(selectedEmployees.filter(id => id !== emp.id));
+                                                    }}
+                                                />
+                                            </td>
+                                            <td className="p-4 w-[20%] overflow-hidden">
+                                                <div className="font-bold text-sm truncate">{emp.full_name}</div>
+                                                <div className="text-[10px] text-gray-500 truncate">{emp.email}</div>
+                                            </td>
+                                            <td className="p-4 w-[12%] font-mono text-xs text-gray-500 truncate">{emp.employee_code || '-'}</td>
+                                            <td className="p-4 w-[18%]">
+                                                <div className="text-xs truncate">{emp.job_title || '-'}</div>
+                                                <div className="text-[10px] text-gray-500 truncate">{emp.department || '-'}</div>
+                                            </td>
+                                            <td className="p-4 w-[10%] text-green-600 font-bold text-xs">{emp.basic_salary}</td>
+                                            <td className="p-4 w-[12%] text-center font-bold text-blue-600 text-sm">{emp.annual_leave_balance ?? 21}</td>
+                                            <td className="p-4 w-[8%]">
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${emp.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                    {emp.status === 'active' ? 'نشط' : 'غير نشط'}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 w-[15%]">
+                                                <div className="flex gap-1 justify-center">
+                                                    <button onClick={() => { setEditingEmp(emp); setShowModal(true); }} className="text-blue-500 hover:text-blue-700 p-1 bg-blue-50 rounded transition-colors"><span className="material-icons text-xs">edit</span></button>
+                                                    <button onClick={() => handleCopy(emp)} className="text-green-500 hover:text-green-700 p-1 bg-green-50 rounded transition-colors"><span className="material-icons text-xs">content_copy</span></button>
+                                                    <button onClick={() => { if (confirm(`هل أنت متأكد من حذف ${emp.full_name}؟`)) { supabase.rpc('hr_delete_employees', { p_ids: [emp.id] }).then(() => fetchEmployees()); } }} className="text-red-500 hover:text-red-700 p-1 bg-red-50 rounded transition-colors"><span className="material-icons text-xs">delete</span></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {filteredEmployees.length === 0 && (
+                                        <tr><td colSpan={8} className="p-8 text-center text-gray-400">لا يوجد بيانات للعرض.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
                 )}
             </div>
+
 
             {showModal && (
                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">

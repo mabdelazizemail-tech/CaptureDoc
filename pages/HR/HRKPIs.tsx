@@ -4,7 +4,7 @@ import { supabase } from '../../services/supabaseClient';
 interface KPIEntry {
     employee_id: string;
     employee_name?: string;
-    month: string;
+    date: string;
     productivity_score: number;
     quality_score: number;
     attendance_score: number;
@@ -15,7 +15,7 @@ interface KPIEntry {
 interface ProjectKPI {
     project_id: string;
     project_name: string;
-    month: string;
+    date: string;
     volume: number;
 }
 
@@ -38,12 +38,12 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
     const [kpiData, setKpiData] = useState<KPIEntry[]>([]);
     const [projectKpiData, setProjectKpiData] = useState<ProjectKPI[]>([]);
     const [loading, setLoading] = useState(true);
-    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10)); // YYYY-MM-DD
     const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
         fetchData();
-    }, [selectedMonth, selectedProjectId]);
+    }, [selectedDate, selectedProjectId]);
 
     const fetchData = async () => {
         setLoading(true);
@@ -66,8 +66,8 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
             const { data: empData } = await empQuery;
             if (empData) setEmployees(empData);
 
-            // Fetch KPIs for selected month
-            let kpiQuery = supabase.from('hr_kpis').select('*').eq('month', selectedMonth);
+            // Fetch KPIs for selected date
+            let kpiQuery = supabase.from('hr_kpis').select('*').eq('date', selectedDate);
             if (projectToFilter) {
                 const empIds = empData?.map(e => e.id) || [];
                 kpiQuery = kpiQuery.in('employee_id', empIds);
@@ -80,7 +80,7 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
                 return {
                     employee_id: emp.id,
                     employee_name: emp.full_name,
-                    month: selectedMonth,
+                    date: selectedDate,
                     productivity_score: record?.productivity_score || 0,
                     quality_score: record?.quality_score || 0,
                     attendance_score: record?.attendance_score || 0,
@@ -98,8 +98,8 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
             }
             const { data: projData } = await projQuery;
 
-            // Fetch project KPIs for the month
-            let projKpiQuery = supabase.from('hr_project_kpis').select('*').eq('month', selectedMonth);
+            // Fetch project KPIs for the date
+            let projKpiQuery = supabase.from('hr_project_kpis').select('*').eq('date', selectedDate);
             if (projectToFilter && projectToFilter !== 'all') {
                 projKpiQuery = projKpiQuery.eq('project_id', projectToFilter);
             }
@@ -110,7 +110,7 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
                 return {
                     project_id: p.id,
                     project_name: p.name,
-                    month: selectedMonth,
+                    date: selectedDate,
                     volume: record?.volume || 0
                 };
             });
@@ -137,7 +137,7 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
         try {
             const updates = kpiData.map(rec => ({
                 employee_id: rec.employee_id,
-                month: rec.month,
+                date: rec.date,
                 productivity_score: rec.productivity_score,
                 quality_score: rec.quality_score,
                 attendance_score: rec.attendance_score,
@@ -147,15 +147,15 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
 
             const projUpdates = projectKpiData.map(p => ({
                 project_id: p.project_id,
-                month: p.month,
+                date: p.date,
                 volume: p.volume
             }));
 
-            const { error: kpiError } = await supabase.from('hr_kpis').upsert(updates, { onConflict: 'employee_id,month' });
+            const { error: kpiError } = await supabase.from('hr_kpis').upsert(updates, { onConflict: 'employee_id,date' });
             if (kpiError) throw kpiError;
 
             if (projUpdates.length > 0) {
-                const { error: projError } = await supabase.from('hr_project_kpis').upsert(projUpdates, { onConflict: 'project_id,month' });
+                const { error: projError } = await supabase.from('hr_project_kpis').upsert(projUpdates, { onConflict: 'project_id,date' });
                 if (projError) throw projError;
             }
             alert('تم حفظ تقييمات الأداء بنجاح');
@@ -180,15 +180,15 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
                     </div>
                     <div>
                         <h2 className="text-xl font-bold text-gray-800">تقييم مؤشرات الأداء (KPIs)</h2>
-                        <p className="text-xs text-gray-500">متابعة وتقييم أداء الموظفين الشهري</p>
+                        <p className="text-xs text-gray-500">متابعة وتقييم أداء الموظفين اليومي</p>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-4">
                     <input
-                        type="month"
-                        value={selectedMonth}
-                        onChange={(e) => setSelectedMonth(e.target.value)}
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
                         className="border border-gray-200 rounded-lg px-4 py-2 font-bold text-gray-700 focus:ring-2 focus:ring-primary outline-none"
                     />
                     <button
@@ -206,7 +206,7 @@ const HRKPIs: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
                 {/* Stats Summary Area */}
                 <div className="lg:col-span-1 space-y-4">
                     <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-6 rounded-2xl text-white shadow-lg">
-                        <h4 className="text-indigo-100 text-sm mb-1">متوسط أداء الشركة</h4>
+                        <h4 className="text-indigo-100 text-sm mb-1">متوسط أداء الموقع</h4>
                         <div className="text-4xl font-black mb-4">
                             {(kpiData.reduce((acc, curr) => acc + parseFloat(calculateAverage(curr)), 0) / (kpiData.length || 1)).toFixed(1)}%
                         </div>

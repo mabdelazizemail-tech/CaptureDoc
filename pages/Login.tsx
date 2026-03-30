@@ -22,6 +22,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setLoading(true);
 
     try {
+      if (isSignUp && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          throw new Error('يرجى إدخال بريد إلكتروني صحيح (مثال: name@domain.com)');
+      }
       // 1. Try Local Login (Master Admin Backdoor)
       // This allows logging in as 'admin' / 'admin' without Supabase
       const localUser = await StorageService.login(email, password);
@@ -128,7 +131,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">اسم المستخدم / البريد الإلكتروني</label>
+            <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">{isSignUp ? 'البريد الإلكتروني' : 'اسم المستخدم / البريد الإلكتروني'}</label>
             <div className="relative">
               <span className="material-icons absolute top-3 right-3 text-gray-400">person</span>
               <input

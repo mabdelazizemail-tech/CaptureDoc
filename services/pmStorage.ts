@@ -153,14 +153,20 @@ export const PMStorageService = {
     },
 
     async getProjectKPIVolume(projectId: string, month: string): Promise<number> {
+        const startDate = `${month}-01`;
+        const nextMonthDate = new Date(month + "-01");
+        nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
+        const endDate = nextMonthDate.toISOString().slice(0, 10);
+
         const { data, error } = await supabase
             .from('hr_project_kpis')
             .select('volume')
             .eq('project_id', projectId)
-            .eq('month', month)
-            .single();
+            .gte('date', startDate)
+            .lt('date', endDate);
+            
         if (error || !data) return 0;
-        return data.volume || 0;
+        return data.reduce((sum, curr) => sum + (curr.volume || 0), 0);
     },
 
     async getTicketExpenses(projectId: string, month: string): Promise<Expense[]> {

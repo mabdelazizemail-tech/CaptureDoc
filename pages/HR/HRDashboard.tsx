@@ -71,39 +71,66 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
 
     return (
         <div className="space-y-6 animate-fade-in">
+            {/* Sub-navigation and Project Header */}
+            <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                    {/* Project Status Pill (Left Side) */}
+                    <div className="animate-fade-in-right">
+                        <div className="bg-white border-2 border-primary/10 px-6 py-2 rounded-xl shadow-sm flex items-center gap-3">
+                            <span className="material-icons text-primary">business</span>
+                            <span className="text-sm font-bold text-gray-800">{projectName || 'جاري التحميل...'}</span>
+                        </div>
+                    </div>
 
-            {/* Sub-navigation for HR Module */}
-            <div className="flex bg-white rounded-xl shadow-sm border border-gray-100 p-2 gap-2 overflow-x-auto">
-                <button
-                    onClick={() => setActiveTab('overview')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'overview' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-                >
-                    <span className="material-icons text-[18px]">dashboard</span>
-                    نظرة عامة
-                </button>
-                <button
-                    onClick={() => setActiveTab('employees')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'employees' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-                >
-                    <span className="material-icons text-[18px]">badge</span>
-                    إدارة الموظفين
-                </button>
+                    {/* Project Selector (Right Side - if Admin/PM) */}
+                    {(isFullAdmin || (user.role === 'project_manager' && allProjects.length > 0)) && (
+                        <div className="flex items-center gap-3 bg-white p-2 px-4 rounded-xl shadow-sm border border-gray-100 animate-fade-in-left">
+                            <span className="material-icons text-gray-400">filter_list</span>
+                            <span className="text-xs font-bold text-gray-500"> تصفية:</span>
+                            <select
+                                className="bg-transparent text-xs font-bold text-gray-800 outline-none cursor-pointer border-none focus:ring-0"
+                                value={selectedProjectId}
+                                onChange={(e) => setSelectedProjectId(e.target.value)}
+                            >
+                                <option value="all">جميع المشاريع</option>
+                                {allProjects.map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+                </div>
 
-
-                <button
-                    onClick={() => setActiveTab('payroll')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'payroll' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-                >
-                    <span className="material-icons text-[18px]">payments</span>
-                    الرواتب والمؤثرات
-                </button>
-                <button
-                    onClick={() => setActiveTab('kpi')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'kpi' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-                >
-                    <span className="material-icons text-[18px]">analytics</span>
-                    تقييم الأداء (KPIs)
-                </button>
+                <div className="flex bg-white rounded-xl shadow-sm border border-gray-100 p-2 gap-2 overflow-x-auto">
+                    <button
+                        onClick={() => setActiveTab('overview')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'overview' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                    >
+                        <span className="material-icons text-[18px]">dashboard</span>
+                        نظرة عامة
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('employees')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'employees' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                    >
+                        <span className="material-icons text-[18px]">badge</span>
+                        إدارة الموظفين
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('payroll')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'payroll' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                    >
+                        <span className="material-icons text-[18px]">payments</span>
+                        الرواتب والمؤثرات
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('kpi')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'kpi' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                    >
+                        <span className="material-icons text-[18px]">analytics</span>
+                        تقييم الأداء (KPIs)
+                    </button>
+                </div>
             </div>
 
             {activeTab === 'overview' && (
@@ -115,25 +142,6 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
                             <p className="text-sm opacity-90">شاشة التقارير والمتابعة للموارد البشرية</p>
                         </div>
                     </div>
-
-                    {(isFullAdmin || (user.role === 'project_manager' && allProjects.length > 0)) && (
-                        <div className="flex items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <span className="material-icons text-gray-400">filter_list</span>
-                            <span className="text-sm font-bold text-gray-600">عرض بيانات:</span>
-                            <div className="flex-1 max-w-xs">
-                                <select
-                                    className="w-full p-2 bg-gray-50 border rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-primary cursor-pointer"
-                                    value={selectedProjectId}
-                                    onChange={(e) => setSelectedProjectId(e.target.value)}
-                                >
-                                    <option value="all">جميع المشاريع</option>
-                                    {allProjects.map(p => (
-                                        <option key={p.id} value={p.id}>{p.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-                    )}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md transition-shadow">
