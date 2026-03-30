@@ -114,10 +114,10 @@ const HRKPIsDesktop: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
             const { error } = await supabase.from('hr_kpis').upsert(updates, { onConflict: 'employee_id,month' });
 
             if (error) throw error;
-            alert('╪¬┘à ╪¡┘ü╪╕ ╪¬┘é┘è┘è┘à╪º╪¬ ╪º┘ä╪ú╪»╪º╪í ╪¿┘å╪¼╪º╪¡');
+            alert('تم حفظ تقييمات الأداء بنجاح');
             fetchData();
         } catch (error: any) {
-            alert('╪¡╪»╪½ ╪«╪╖╪ú ╪ú╪½┘å╪º╪í ╪º┘ä╪¡┘ü╪╕: ' + error.message);
+            alert('حدث خطأ أثناء الحفظ: ' + error.message);
         } finally {
             setIsSaving(false);
         }
@@ -135,8 +135,8 @@ const HRKPIsDesktop: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
                         <span className="material-icons">analytics</span>
                     </div>
                     <div>
-                        <h2 className="text-xl font-bold text-gray-800">╪¬┘é┘è┘è┘à ┘à╪ñ╪┤╪▒╪º╪¬ ╪º┘ä╪ú╪»╪º╪í (KPIs)</h2>
-                        <p className="text-xs text-gray-500">┘à╪¬╪º╪¿╪╣╪⌐ ┘ê╪¬┘é┘è┘è┘à ╪ú╪»╪º╪í ╪º┘ä┘à┘ê╪╕┘ü┘è┘å ╪º┘ä╪┤┘ç╪▒┘è</p>
+                        <h2 className="text-xl font-bold text-gray-800">تقييم الأداء (KPIs)</h2>
+                        <p className="text-xs text-gray-500">متابعة أداء الموظفين والمشاريع</p>
                     </div>
                 </div>
 
@@ -153,7 +153,7 @@ const HRKPIsDesktop: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
                         className="bg-primary text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-blue-700 transition shadow-sm disabled:opacity-50"
                     >
                         <span className="material-icons">{isSaving ? 'hourglass_top' : 'save'}</span>
-                        ╪¡┘ü╪╕ ╪º┘ä╪¬┘é┘è┘è┘à╪º╪¬
+                        حفظ
                     </button>
                 </div>
             </div>
@@ -162,7 +162,7 @@ const HRKPIsDesktop: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
                 {/* Stats Summary Area */}
                 <div className="lg:col-span-1 space-y-4">
                     <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-6 rounded-2xl text-white shadow-lg">
-                        <h4 className="text-indigo-100 text-sm mb-1">┘à╪¬┘ê╪│╪╖ ╪ú╪»╪º╪í ╪º┘ä╪┤╪▒┘â╪⌐</h4>
+                        <h4 className="text-indigo-100 text-sm mb-1">متوسط الموقع</h4>
                         <div className="text-4xl font-black mb-4">
                             {(kpiData.reduce((acc, curr) => acc + parseFloat(calculateAverage(curr)), 0) / (kpiData.length || 1)).toFixed(1)}%
                         </div>
@@ -177,7 +177,7 @@ const HRKPIsDesktop: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
                     <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
                         <h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2 text-sm">
                             <span className="material-icons text-orange-400">workspace_premium</span>
-                            ╪ú┘ü╪╢┘ä ╪º┘ä┘à┘ê╪╕┘ü┘è┘å ╪ú╪»╪º╪í┘ï
+                            أفضل الموظفين
                         </h4>
                         <div className="space-y-4">
                             {[...kpiData].sort((a, b) => parseFloat(calculateAverage(b)) - parseFloat(calculateAverage(a))).slice(0, 3).map((top, idx) => (
@@ -198,18 +198,18 @@ const HRKPIsDesktop: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
                 {/* KPI Input Table */}
                 <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                     {loading ? (
-                        <div className="p-20 text-center text-gray-400">╪¼╪º╪▒┘è ╪¬╪¡┘à┘è┘ä ╪º┘ä╪¿┘è╪º┘å╪º╪¬...</div>
+                        <div className="p-20 text-center text-gray-400">جاري التحميل...</div>
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-right">
                                 <thead className="bg-gray-50 text-gray-500 text-xs border-b">
                                     <tr>
-                                        <th className="p-4 font-bold">╪º┘ä┘à┘ê╪╕┘ü</th>
-                                        <th className="p-4 font-bold text-center">╪º┘ä╪Ñ┘å╪¬╪º╪¼┘è╪⌐</th>
-                                        <th className="p-4 font-bold text-center">╪º┘ä╪¼┘ê╪»╪⌐</th>
-                                        <th className="p-4 font-bold text-center">╪º┘ä╪¡╪╢┘ê╪▒</th>
-                                        <th className="p-4 font-bold text-center">╪º┘ä╪º┘ä╪¬╪▓╪º┘à</th>
-                                        <th className="p-4 font-bold text-center">╪º┘ä┘à╪╣╪»┘ä</th>
+                                        <th className="p-4 font-bold">الموظف</th>
+                                        <th className="p-4 font-bold text-center">الإنتاجية</th>
+                                        <th className="p-4 font-bold text-center">الجودة</th>
+                                        <th className="p-4 font-bold text-center">الحضور</th>
+                                        <th className="p-4 font-bold text-center">الالتزام</th>
+                                        <th className="p-4 font-bold text-center">المتوسط</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
