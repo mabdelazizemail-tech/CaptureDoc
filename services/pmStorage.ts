@@ -169,6 +169,35 @@ export const PMStorageService = {
         return data.reduce((sum, curr) => sum + (curr.volume || 0), 0);
     },
 
+    async upsertProjectKPIVolume(projectId: string, month: string, volume: number): Promise<{ success: boolean; error?: string }> {
+        // Use the first day of the month as the date key
+        const dateKey = `${month}-01`;
+
+        // Check if a record already exists for this project+month
+        const { data: existing, error: fetchErr } = await supabase
+            .from('hr_project_kpis')
+            .select('id')
+            .eq('project_id', projectId)
+            .eq('date', dateKey)
+            .maybeSingle();
+
+        if (fetchErr) return { success: false, error: fetchErr.message };
+
+        if (existing) {
+            const { error } = await supabase
+                .from('hr_project_kpis')
+                .update({ volume })
+                .eq('id', existing.id);
+            if (error) return { success: false, error: error.message };
+        } else {
+            const { error } = await supabase
+                .from('hr_project_kpis')
+                .insert({ project_id: projectId, date: dateKey, volume });
+            if (error) return { success: false, error: error.message };
+        }
+        return { success: true };
+    },
+
     async getTicketExpenses(projectId: string, month: string): Promise<Expense[]> {
         // Fetch all tickets for the project that have a cost
         const { data, error } = await supabase

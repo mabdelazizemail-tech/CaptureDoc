@@ -77,6 +77,11 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
     const [showExpenseModal, setShowExpenseModal] = useState(false);
     const [showManagementMenu, setShowManagementMenu] = useState(false);
 
+    // Monthly Volume Input State
+    const [showVolumeModal, setShowVolumeModal] = useState(false);
+    const [volumeInput, setVolumeInput] = useState('');
+    const [savingVolume, setSavingVolume] = useState(false);
+
     const isAdmin = user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'project_manager' || user.role === 'it_specialist';
 
 
@@ -268,6 +273,29 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
         }));
         setProjectFinancials(fins);
         setLoading(false);
+    };
+
+    const handleSaveVolume = async () => {
+        if (!currentProject) {
+            setToast({ message: 'يرجى اختيار مشروع أولاً', type: 'error' });
+            return;
+        }
+        const vol = parseInt(volumeInput);
+        if (isNaN(vol) || vol < 0) {
+            setToast({ message: 'يرجى إدخال رقم صحيح', type: 'error' });
+            return;
+        }
+        setSavingVolume(true);
+        const result = await PMStorageService.upsertProjectKPIVolume(currentProject.id, selectedMonth, vol);
+        if (result.success) {
+            setToast({ message: `تم حفظ الحجم المنجز (${vol.toLocaleString()}) بنجاح`, type: 'success' });
+            setShowVolumeModal(false);
+            setVolumeInput('');
+            loadProjectData(currentProject.id);
+        } else {
+            setToast({ message: `فشل الحفظ: ${result.error}`, type: 'error' });
+        }
+        setSavingVolume(false);
     };
 
     const handleAddExpense = async (e: React.FormEvent) => {
@@ -626,8 +654,19 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
                                         <div className="text-xl font-bold text-purple-800">{fmt(totalCostPerUnit, 2)} EGP</div>
                                         <div className="text-xs text-gray-400 mt-1">Revenue/Unit: {fmt(projectFinancials[0]?.revenuePerUnit || 0, 2)}</div>
                                     </div>
-                                    <div className="p-4 bg-sky-50 rounded-xl border border-sky-100">
-                                        <div className="text-xs text-gray-500 font-semibold mb-1">الحجم الفعلي</div>
+                                    <div className="p-4 bg-sky-50 rounded-xl border border-sky-100 relative group">
+                                        <div className="text-xs text-gray-500 font-semibold mb-1 flex items-center justify-between">
+                                            <span>الحجم الفعلي</span>
+                                            {isAdmin && currentProject && (
+                                                <button
+                                                    onClick={() => { setVolumeInput(String(actualMonthlyAchieved || '')); setShowVolumeModal(true); }}
+                                                    className="opacity-0 group-hover:opacity-100 transition-opacity bg-sky-600 text-white rounded-md px-2 py-0.5 text-[10px] font-bold hover:bg-sky-700 flex items-center gap-1"
+                                                    title="تعديل الحجم المنجز"
+                                                >
+                                                    <span className="material-icons text-xs">edit</span> تعديل
+                                                </button>
+                                            )}
+                                        </div>
                                         <div className="text-xl font-bold text-sky-800">{fmt(totalActualVol)}</div>
                                         <div className="text-xs text-gray-400 mt-1">مستهدف: {fmt(totalPlannedVol)} ({pct(totalAchievePct)})</div>
                                     </div>
@@ -1131,6 +1170,86 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
                                     </button>
                                 </div>
                             </form>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Monthly Achieved Volume Modal ── */}
+            {showVolumeModal && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowVolumeModal(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full animate-fade-in-up" onClick={e => e.stopPropagation()}>
+                        <div className="p-6 border-b border-gray-100">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center">
+                                    <span className="material-icons text-sky-600">speed</span>
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-800">تسجيل الحجم المنجز</h3>
+                                    <p className="text-xs text-gray-400">{currentProject?.name} — {selectedMonth}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="grid grid-cols-2 gap-3 text-center">
+                                <div className="bg-gray-50 rounded-lg p-3">
+                                    <div className="text-[10px] text-gray-400 font-bold">المستهدف الشهري</div>
+                                    <div className="text-lg font-bold text-gray-700">{fmt(currentProject?.contract_monthly_volume || 0)}</div>
+                                </div>
+                                <div className="bg-sky-50 rounded-lg p-3">
+                                    <div className="text-[10px] text-gray-400 font-bold">الحجم الحالي المسجل</div>
+                                    <div className="text-lg font-bold text-sky-700">{fmt(actualMonthlyAchieved)}</div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-2">الحجم المنجز الجديد</label>
+                                <div className="relative">
+                                    <span className="material-icons absolute right-3 top-3 text-gray-300">description</span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        className="w-full pl-4 pr-10 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-sky-300 outline-none text-lg font-bold text-gray-800 text-center"
+                                        placeholder="أدخل الحجم المنجز..."
+                                        value={volumeInput}
+                                        onChange={e => setVolumeInput(e.target.value)}
+                                        autoFocus
+                                    />
+                                </div>
+                                {volumeInput && currentProject?.contract_monthly_volume && Number(currentProject.contract_monthly_volume) > 0 && (
+                                    <div className="mt-2 text-center">
+                                        <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                                            (parseInt(volumeInput) / Number(currentProject.contract_monthly_volume)) * 100 >= 90
+                                                ? 'bg-emerald-100 text-emerald-700'
+                                                : (parseInt(volumeInput) / Number(currentProject.contract_monthly_volume)) * 100 >= 70
+                                                    ? 'bg-yellow-100 text-yellow-700'
+                                                    : 'bg-red-100 text-red-700'
+                                        }`}>
+                                            نسبة الإنجاز: {pct((parseInt(volumeInput) / Number(currentProject.contract_monthly_volume)) * 100)}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowVolumeModal(false)}
+                                    className="flex-1 py-3 border border-gray-200 text-gray-600 rounded-xl font-bold hover:bg-gray-50 transition-colors"
+                                >
+                                    إلغاء
+                                </button>
+                                <button
+                                    onClick={handleSaveVolume}
+                                    disabled={savingVolume || !volumeInput}
+                                    className={`flex-[2] py-3 rounded-xl font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${
+                                        savingVolume || !volumeInput ? 'bg-gray-300' : 'bg-sky-600 hover:bg-sky-700 ring-4 ring-sky-100'
+                                    }`}
+                                >
+                                    {savingVolume ? <span className="material-icons animate-spin">sync</span> : <span className="material-icons">save</span>}
+                                    حفظ الحجم
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
