@@ -39,6 +39,7 @@ const AssetDashboard: React.FC<AssetDashboardProps> = ({ user }) => {
 
     // Search & Filter State
     const [searchTerm, setSearchTerm] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState('');
 
     // Bulk Selection State
     const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
@@ -656,11 +657,14 @@ const AssetDashboard: React.FC<AssetDashboardProps> = ({ user }) => {
         showToast('تم تصدير الملف بنجاح');
     };
 
-    const filteredAssets = assets.filter(a =>
-        (a.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (a.serialNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (a.assetTag && a.assetTag.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+    const filteredAssets = assets.filter(a => {
+        const matchesSearch = !searchTerm ||
+            (a.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (a.serialNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (a.assetTag && a.assetTag.toLowerCase().includes(searchTerm.toLowerCase()));
+        const matchesCategory = !categoryFilter || a.type === categoryFilter;
+        return matchesSearch && matchesCategory;
+    });
 
     if (loading) {
         return <div className="flex h-96 items-center justify-center text-primary"><span className="material-icons animate-spin text-4xl">donut_large</span></div>;
@@ -705,15 +709,30 @@ const AssetDashboard: React.FC<AssetDashboardProps> = ({ user }) => {
                 </div>
 
                 <div className="flex flex-col md:flex-row gap-4 items-center justify-between border-t pt-4">
-                    <div className="relative w-full md:w-96">
-                        <span className="material-icons absolute right-3 top-2.5 text-gray-400">search</span>
-                        <input
-                            type="text"
-                            placeholder="بحث بالرمز (Tag)، الاسم، أو السيريال..."
-                            className="w-full pl-4 pr-10 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary outline-none"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
+                    <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                        <div className="relative w-full sm:w-72">
+                            <span className="material-icons absolute right-3 top-2.5 text-gray-400">search</span>
+                            <input
+                                type="text"
+                                placeholder="بحث بالرمز (Tag)، الاسم، أو السيريال..."
+                                className="w-full pl-4 pr-10 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary outline-none"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+                        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                            <span className="material-icons text-gray-400 text-sm">category</span>
+                            <select
+                                className="bg-transparent text-sm text-gray-700 outline-none min-w-[120px]"
+                                value={categoryFilter}
+                                onChange={(e) => setCategoryFilter(e.target.value)}
+                            >
+                                <option value="">كل الفئات (All)</option>
+                                {HARDWARE_TYPES.map(type => (
+                                    <option key={type} value={type}>{type}</option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
                     <div className="flex gap-2 w-full md:w-auto">
                         {canManageAssets && (
