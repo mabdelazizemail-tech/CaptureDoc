@@ -89,6 +89,10 @@ const HRPayroll: React.FC<HRPayrollProps> = ({ user, selectedProjectId }) => {
     const [globalPercent, setGlobalPercent] = useState<number>(100);
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>({ key: 'employee_code', direction: 'asc' });
     const [searchTerm, setSearchTerm] = useState('');
+    const [netOverride, setNetOverride] = useState<number | null>(null);
+    const [editingNet, setEditingNet] = useState(false);
+    const [netInputValue, setNetInputValue] = useState('');
+    const [savingOverride, setSavingOverride] = useState(false);
 
     const isAdmin = ['super_admin','power_admin','it_specialist','hr_admin'].includes(user.role);
 
@@ -192,10 +196,54 @@ const HRPayroll: React.FC<HRPayrollProps> = ({ user, selectedProjectId }) => {
 
             merged.sort((a, b) => (a.employee_code || '').localeCompare(b.employee_code || '', undefined, { numeric: true, sensitivity: 'base' }));
             setPayrollData(merged);
+
+            // Fetch net salary override if exists
+            const overrideQuery = supabase.from('hr_payroll_overrides')
+                .select('total_net_override')
+                .eq('month', selectedMonth);
+            if (projectToFilter) overrideQuery.eq('project_id', projectToFilter);
+            const { data: overrideData } = await overrideQuery.maybeSingle();
+            setNetOverride(overrideData?.total_net_override ?? null);
+            setEditingNet(false);
         } catch (err) {
             console.error('Error fetching payroll:', err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    // ── Save net salary override ─────────────────────────────────────────────
+    const saveNetOverride = async (value: number | null) => {
+        setSavingOverride(true);
+        try {
+            const projectToFilter = (['super_admin','power_admin','it_specialist','hr_admin','project_manager'].includes(user.role))
+                ? (selectedProjectId !== 'all' ? selectedProjectId : null)
+                : user.projectId;
+
+            if (value === null) {
+                // Remove override
+                if (projectToFilter) {
+                    await supabase.from('hr_payroll_overrides')
+                        .delete()
+                        .eq('project_id', projectToFilter)
+                        .eq('month', selectedMonth);
+                }
+                setNetOverride(null);
+            } else {
+                await supabase.from('hr_payroll_overrides').upsert({
+                    project_id: projectToFilter,
+                    month: selectedMonth,
+                    total_net_override: value,
+                    updated_by: user.id,
+                    updated_at: new Date().toISOString(),
+                }, { onConflict: 'project_id,month' });
+                setNetOverride(value);
+            }
+            setEditingNet(false);
+        } catch (err: any) {
+            alert('خطأ في حفظ القيمة: ' + err.message);
+        } finally {
+            setSavingOverride(false);
         }
     };
 
@@ -569,7 +617,8 @@ const HRPayroll: React.FC<HRPayrollProps> = ({ user, selectedProjectId }) => {
     };
 
     // ── Totals ────────────────────────────────────────────────────────────────
-    const totalNet       = payrollData.reduce((s, r) => s + r.net_salary,    0);
+    const computedNet    = payrollData.reduce((s, r) => s + r.net_salary,    0);
+    const totalNet       = netOverride !== null ? netOverride : computedNet;
     const totalOT        = payrollData.reduce((s, r) => s + r.overtime_amount, 0);
     const totalDeductions = payrollData.reduce((s, r) => s + r.total_deducted, 0);
     const allFinalized   = payrollData.length > 0 && payrollData.every(r => r.status === 'finalized');
@@ -646,10 +695,83 @@ const HRPayroll: React.FC<HRPayrollProps> = ({ user, selectedProjectId }) => {
 
             {/* ── KPI cards ── */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* ── Editable Net Salary card ── */}
+                <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md transition-shadow relative">
+                    <div className="p-3 bg-blue-50 text-blue-500 rounded-lg">
+                        <span className="material-icons text-3xl">account_balance_wallet</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <h3 className="text-gray-500 text-sm font-medium flex items-center gap-1">
+                            إجمالي صافي الرواتب
+                            {netOverride !== null && (
+                                <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold">معدّل</span>
+                            )}
+                        </h3>
+                        {editingNet ? (
+                            <div className="flex items-center gap-2 mt-1">
+                                <input
+                                    type="number"
+                                    autoFocus
+                                    value={netInputValue}
+                                    onChange={e => setNetInputValue(e.target.value)}
+                                    onKeyDown={e => {
+                                        if (e.key === 'Enter') saveNetOverride(parseFloat(netInputValue) || 0);
+                                        if (e.key === 'Escape') setEditingNet(false);
+                                    }}
+                                    className="w-full border border-blue-300 rounded-lg px-2 py-1 text-lg font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                    placeholder={computedNet.toLocaleString('en-US',{minimumFractionDigits:2})}
+                                    disabled={savingOverride}
+                                />
+                                <button
+                                    onClick={() => saveNetOverride(parseFloat(netInputValue) || 0)}
+                                    disabled={savingOverride}
+                                    className="p-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+                                    title="حفظ"
+                                >
+                                    <span className="material-icons text-lg">{savingOverride ? 'hourglass_top' : 'check'}</span>
+                                </button>
+                                {netOverride !== null && (
+                                    <button
+                                        onClick={() => saveNetOverride(null)}
+                                        disabled={savingOverride}
+                                        className="p-1 bg-gray-200 text-gray-600 rounded-lg hover:bg-gray-300 disabled:opacity-50"
+                                        title="إزالة التعديل"
+                                    >
+                                        <span className="material-icons text-lg">restart_alt</span>
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setEditingNet(false)}
+                                    className="p-1 bg-gray-100 text-gray-500 rounded-lg hover:bg-gray-200"
+                                    title="إلغاء"
+                                >
+                                    <span className="material-icons text-lg">close</span>
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2 mt-1">
+                                <p className="text-2xl font-bold text-gray-800">{totalNet.toLocaleString('en-US',{minimumFractionDigits:2})} EGP</p>
+                                {isAdmin && (
+                                    <button
+                                        onClick={() => { setNetInputValue(totalNet.toString()); setEditingNet(true); }}
+                                        className="p-1 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                                        title="تعديل إجمالي صافي الرواتب"
+                                    >
+                                        <span className="material-icons text-lg">edit</span>
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                        {netOverride !== null && !editingNet && (
+                            <p className="text-xs text-gray-400 mt-0.5">المحسوب: {computedNet.toLocaleString('en-US',{minimumFractionDigits:2})} EGP</p>
+                        )}
+                    </div>
+                </div>
+
+                {/* ── OT & Deductions cards ── */}
                 {[
-                    { label:'إجمالي صافي الرواتب', value: totalNet,        icon:'account_balance_wallet', color:'blue'  },
-                    { label:'إجمالي قيمة الإضافي',  value: totalOT,        icon:'add_circle',             color:'green' },
-                    { label:'إجمالي خصومات الغياب', value: totalDeductions, icon:'remove_circle',          color:'red'   },
+                    { label:'إجمالي قيمة الإضافي',  value: totalOT,        icon:'add_circle',    color:'green' },
+                    { label:'إجمالي خصومات الغياب', value: totalDeductions, icon:'remove_circle', color:'red'   },
                 ].map(c => (
                     <div key={c.label} className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md transition-shadow">
                         <div className={`p-3 bg-${c.color}-50 text-${c.color}-500 rounded-lg`}>
