@@ -105,6 +105,11 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
 
     useEffect(() => { loadProjects(); }, [user]);
 
+    // Sync volume input when data reloads
+    useEffect(() => {
+        setVolumeInput(actualMonthlyAchieved > 0 ? String(actualMonthlyAchieved) : '');
+    }, [actualMonthlyAchieved]);
+
     useEffect(() => {
         if (tab === 'overview' && siteLogs.length > 0) {
             setTimeout(() => {
@@ -577,6 +582,34 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
                                         </div>
                                     </>
                                 )}
+                            </div>
+                        )}
+
+                        {/* Inline Monthly Volume Input */}
+                        {isAdmin && currentProject && (
+                            <div className="flex items-center gap-1.5 bg-sky-50 border border-sky-200 rounded-lg px-3 py-1.5">
+                                <span className="material-icons text-sky-500 text-sm">speed</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="الحجم المنجز"
+                                    className="bg-transparent w-28 outline-none text-sm font-bold text-sky-800 placeholder:text-sky-300 placeholder:font-normal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    value={volumeInput}
+                                    onChange={e => setVolumeInput(e.target.value)}
+                                    onFocus={() => { if (!volumeInput && actualMonthlyAchieved > 0) setVolumeInput(String(actualMonthlyAchieved)); }}
+                                />
+                                <button
+                                    onClick={handleSaveVolume}
+                                    disabled={savingVolume || !volumeInput}
+                                    className={`px-2 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-0.5 ${
+                                        savingVolume || !volumeInput
+                                            ? 'bg-gray-200 text-gray-400'
+                                            : 'bg-sky-600 text-white hover:bg-sky-700 shadow-sm'
+                                    }`}
+                                    title="حفظ الحجم المنجز"
+                                >
+                                    {savingVolume ? <span className="material-icons text-xs animate-spin">sync</span> : <span className="material-icons text-xs">check</span>}
+                                </button>
                             </div>
                         )}
 
