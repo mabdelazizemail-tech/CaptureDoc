@@ -41,6 +41,7 @@ const AssetDashboard: React.FC<AssetDashboardProps> = ({ user }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('');
 
+
     // Bulk Selection State
     const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
 
@@ -666,6 +667,116 @@ const AssetDashboard: React.FC<AssetDashboardProps> = ({ user }) => {
         return matchesSearch && matchesCategory;
     });
 
+    const handlePrintReport = () => {
+        const reportAssets = filteredAssets;
+        const totalAssets = reportAssets.length;
+        const totalCost = reportAssets.reduce((sum, a) => sum + (a.cost || 0), 0);
+
+        const byCategory: Record<string, number> = {};
+        const byStatus: Record<string, number> = {};
+        const byLocation: Record<string, number> = {};
+
+        reportAssets.forEach(a => {
+            byCategory[a.type] = (byCategory[a.type] || 0) + 1;
+            byStatus[a.status] = (byStatus[a.status] || 0) + 1;
+            const loc = a.physicalLocation || 'غير محدد';
+            byLocation[loc] = (byLocation[loc] || 0) + 1;
+        });
+
+        const needsMaintenance = reportAssets.filter(a => a.status === 'faulty' || a.status === 'maintenance').length;
+        const retired = reportAssets.filter(a => a.status === 'retired').length;
+
+        const projectName = availableProjects.find(p => p.id === projectId)?.name || (projectId === 'all' ? 'كل المواقع' : 'المشروع');
+        const statusLabels: Record<string, string> = { operational: 'يعمل', in_storage: 'مخزن', faulty: 'عطل', maintenance: 'صيانة', retired: 'متقاعد', in_use: 'قيد الاستخدام' };
+
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) return;
+
+        printWindow.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>تقرير الأصول - ${projectName}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, sans-serif; color: #1f2937; padding: 32px; direction: rtl; }
+  .header { text-align: center; border-bottom: 3px solid #2563eb; padding-bottom: 16px; margin-bottom: 24px; }
+  .header h1 { font-size: 22px; color: #1e3a5f; }
+  .header p { color: #6b7280; font-size: 13px; margin-top: 4px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .summary-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; text-align: center; }
+  .summary-card .value { font-size: 26px; font-weight: 700; color: #2563eb; }
+  .summary-card .label { font-size: 12px; color: #6b7280; margin-top: 2px; }
+  .section { margin-bottom: 20px; }
+  .section h2 { font-size: 15px; font-weight: 700; color: #1e3a5f; margin-bottom: 10px; border-right: 4px solid #2563eb; padding-right: 8px; }
+  .breakdown-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+  .breakdown-item { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+  .breakdown-item .count { font-weight: 700; color: #2563eb; font-size: 15px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 8px; }
+  th { background: #f3f4f6; padding: 8px 6px; text-align: right; font-weight: 700; color: #374151; border-bottom: 2px solid #d1d5db; }
+  td { padding: 7px 6px; border-bottom: 1px solid #e5e7eb; }
+  tr:nth-child(even) { background: #f9fafb; }
+  .status-badge { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; display: inline-block; }
+  .status-operational { background: #d1fae5; color: #065f46; }
+  .status-in_storage { background: #e0e7ff; color: #3730a3; }
+  .status-faulty { background: #fee2e2; color: #991b1b; }
+  .status-maintenance { background: #fef3c7; color: #92400e; }
+  .status-retired { background: #f3f4f6; color: #6b7280; }
+  .status-in_use { background: #dbeafe; color: #1e40af; }
+  .footer { text-align: center; color: #9ca3af; font-size: 11px; margin-top: 24px; border-top: 1px solid #e5e7eb; padding-top: 12px; }
+  @media print { body { padding: 16px; } .summary-grid { grid-template-columns: repeat(4, 1fr); } }
+</style></head><body>
+  <div class="header">
+    <h1>تقرير تفصيلي لأصول المشروع</h1>
+    <p>${projectName} — تاريخ التقرير: ${new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+  </div>
+  <div class="summary-grid">
+    <div class="summary-card"><div class="value">${totalAssets}</div><div class="label">إجمالي الأصول</div></div>
+    <div class="summary-card"><div class="value">${totalCost.toLocaleString()}</div><div class="label">إجمالي التكلفة (ر.س)</div></div>
+    <div class="summary-card"><div class="value">${needsMaintenance}</div><div class="label">تحتاج صيانة / معطلة</div></div>
+    <div class="summary-card"><div class="value">${retired}</div><div class="label">متقاعد</div></div>
+  </div>
+  <div class="section">
+    <h2>توزيع حسب الفئة</h2>
+    <div class="breakdown-grid">
+      ${Object.entries(byCategory).map(([cat, count]) => `<div class="breakdown-item"><span>${cat}</span><span class="count">${count}</span></div>`).join('')}
+    </div>
+  </div>
+  <div class="section">
+    <h2>توزيع حسب الحالة</h2>
+    <div class="breakdown-grid">
+      ${Object.entries(byStatus).map(([status, count]) => `<div class="breakdown-item"><span>${statusLabels[status] || status}</span><span class="count">${count}</span></div>`).join('')}
+    </div>
+  </div>
+  <div class="section">
+    <h2>توزيع حسب الموقع</h2>
+    <div class="breakdown-grid">
+      ${Object.entries(byLocation).map(([loc, count]) => `<div class="breakdown-item"><span>${loc}</span><span class="count">${count}</span></div>`).join('')}
+    </div>
+  </div>
+  <div class="section">
+    <h2>قائمة الأصول التفصيلية (${reportAssets.length})</h2>
+    <table>
+      <thead><tr><th>#</th><th>الرمز</th><th>الاسم</th><th>الفئة</th><th>الرقم التسلسلي</th><th>الحالة</th><th>الموقع</th><th>المستخدم</th><th>التكلفة</th><th>تاريخ الشراء</th></tr></thead>
+      <tbody>
+        ${reportAssets.map((a, i) => `<tr>
+          <td>${i + 1}</td>
+          <td>${a.assetTag || '-'}</td>
+          <td>${a.name}</td>
+          <td>${a.type}</td>
+          <td>${a.serialNumber || '-'}</td>
+          <td><span class="status-badge status-${a.status}">${statusLabels[a.status] || a.status}</span></td>
+          <td>${a.physicalLocation || '-'}</td>
+          <td>${a.assignedUser || '-'}</td>
+          <td>${a.cost ? a.cost.toLocaleString() : '-'}</td>
+          <td>${a.purchaseDate || '-'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+  <div class="footer">تم إنشاء هذا التقرير آلياً بواسطة نظام إدارة الأصول — CaptureDoc Suite</div>
+</body></html>`);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => printWindow.print(), 500);
+    };
+
     if (loading) {
         return <div className="flex h-96 items-center justify-center text-primary"><span className="material-icons animate-spin text-4xl">donut_large</span></div>;
     }
@@ -734,7 +845,14 @@ const AssetDashboard: React.FC<AssetDashboardProps> = ({ user }) => {
                             </select>
                         </div>
                     </div>
-                    <div className="flex gap-2 w-full md:w-auto">
+                    <div className="flex gap-2 w-full md:w-auto flex-wrap">
+                        <button
+                            onClick={handlePrintReport}
+                            disabled={filteredAssets.length === 0}
+                            className="bg-orange-600 text-white px-4 py-2 rounded-lg font-bold shadow-sm hover:bg-orange-700 flex items-center gap-2 disabled:bg-gray-300 transition-colors"
+                        >
+                            <span className="material-icons text-sm">summarize</span> تقرير تفصيلي
+                        </button>
                         {canManageAssets && (
                             <>
                                 <button
