@@ -1120,11 +1120,27 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load from Supabase on mount
+  // Load from Supabase on mount. One-time: if Supabase is empty but this
+  // browser has legacy localStorage invoices, push them up so nothing is lost.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const rows = await loadInvoicesRemote<Invoice>();
+      let rows = await loadInvoicesRemote<Invoice>();
+      if (rows.length === 0) {
+        try {
+          const raw = localStorage.getItem('collections.invoices.v1');
+          if (raw) {
+            const legacy = JSON.parse(raw);
+            if (Array.isArray(legacy) && legacy.length) {
+              await Promise.all(legacy.map((inv: Invoice) => upsertInvoiceRemote(inv)));
+              rows = legacy as Invoice[];
+              console.log(`[collections] migrated ${legacy.length} invoices from localStorage to Supabase`);
+            }
+          }
+        } catch (e) {
+          console.warn('[collections] localStorage migration skipped', e);
+        }
+      }
       if (cancelled) return;
       const normalized = rows.map(inv =>
         inv.invoiceStatus === 'Draft' || inv.invoiceStatus === 'Approved'
