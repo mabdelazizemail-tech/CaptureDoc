@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { User } from '../services/types';
 import { parseInvoicePdf, ParsedInvoice } from '../services/invoicePdfParser';
+import { loadInvoices as loadInvoicesRemote, upsertInvoice as upsertInvoiceRemote, deleteInvoices as deleteInvoicesRemote } from '../services/collectionsStorage';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1115,31 +1116,26 @@ interface CollectionsDashboardProps {
   user: User;
 }
 
-const STORAGE_KEY = 'collections.invoices.v1';
-
 const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => {
-  const [invoices, setInvoices] = useState<Invoice[]>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          return (parsed as Invoice[]).map(inv =>
-            inv.invoiceStatus === 'Draft' || inv.invoiceStatus === 'Approved'
-              ? { ...inv, invoiceStatus: 'Sent' as InvoiceStatus }
-              : inv
-          );
-        }
-      }
-    } catch {}
-    return SEED;
-  });
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [loading, setLoading] = useState(true);
 
+  // Load from Supabase on mount
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(invoices));
-    } catch {}
-  }, [invoices]);
+    let cancelled = false;
+    (async () => {
+      const rows = await loadInvoicesRemote<Invoice>();
+      if (cancelled) return;
+      const normalized = rows.map(inv =>
+        inv.invoiceStatus === 'Draft' || inv.invoiceStatus === 'Approved'
+          ? { ...inv, invoiceStatus: 'Sent' as InvoiceStatus }
+          : inv
+      );
+      setInvoices(normalized);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [screen, setScreen] = useState<Screen>('dashboard');
   const [activeTab, setActiveTab] = useState<'dashboard' | 'invoice-list' | 'payment-entry'>('dashboard');
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
@@ -1178,8 +1174,10 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
 
   const saveInvoice = (data: Partial<Invoice>) => {
     if (editingInvoice) {
-      setInvoices(prev => prev.map(i => i.id === editingInvoice.id ? { ...i, ...data } : i));
+      const updated = { ...editingInvoice, ...data } as Invoice;
+      setInvoices(prev => prev.map(i => i.id === editingInvoice.id ? updated : i));
       setSelectedInvoice(prev => prev ? { ...prev, ...data } : prev);
+      upsertInvoiceRemote(updated);
     } else {
       const newInv: Invoice = {
         id: Date.now().toString(),
@@ -1192,26 +1190,32 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
         ...(data as Omit<Invoice, 'id' | 'payments'>),
       };
       setInvoices(prev => [newInv, ...prev]);
+      upsertInvoiceRemote(newInv);
     }
     setScreen(activeTab === 'invoice-list' ? 'invoice-list' : 'dashboard');
   };
 
   const updateCollection = (data: Pick<Invoice, 'collectionStatus' | 'lastFollowUp' | 'nextFollowUp' | 'notes'>) => {
     if (!selectedInvoice) return;
-    setInvoices(prev => prev.map(i => i.id === selectedInvoice.id ? { ...i, ...data } : i));
-    setSelectedInvoice(prev => prev ? { ...prev, ...data } : prev);
+    const updated = { ...selectedInvoice, ...data };
+    setInvoices(prev => prev.map(i => i.id === selectedInvoice.id ? updated : i));
+    setSelectedInvoice(updated);
+    upsertInvoiceRemote(updated);
   };
 
   const savePayment = (invoiceId: string, payment: Omit<Payment, 'id'>) => {
     const newPayment: Payment = { ...payment, id: Date.now().toString() };
+    let updated: Invoice | null = null;
     setInvoices(prev => prev.map(inv => {
       if (inv.id !== invoiceId) return inv;
       const payments = [...inv.payments, newPayment];
       const paid = payments.reduce((s, p) => s + p.amountReceived, 0);
       const paymentStatus: PaymentStatus = paid >= inv.total ? 'Paid' : paid > 0 ? 'Partial' : 'Unpaid';
       const collectionStatus: CollectionStatus = paid >= inv.total ? 'Paid' : 'Partially Paid';
-      return { ...inv, payments, paymentStatus, collectionStatus };
+      updated = { ...inv, payments, paymentStatus, collectionStatus };
+      return updated;
     }));
+    if (updated) upsertInvoiceRemote(updated);
     setPaymentInvoice(null);
     setScreen('dashboard');
     setActiveTab('dashboard');
@@ -1228,6 +1232,12 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
 
   return (
     <div className="p-4 md:p-6 space-y-5" dir="rtl">
+      {loading && (
+        <div className="bg-[#1b2130] border border-gray-700 rounded-lg px-4 py-2 text-xs text-gray-400 flex items-center gap-2">
+          <span className="material-icons text-sm animate-spin">sync</span>
+          جاري تحميل البيانات من الخادم...
+        </div>
+      )}
       {/* Module Header */}
       <div className="flex items-center gap-3">
         <span className="material-icons text-primary text-2xl">account_balance</span>
@@ -1267,7 +1277,10 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
           onOpen={openInvoice}
           onNew={goCreateInvoice}
           canDelete={user.role === 'super_admin' || user.role === 'power_admin'}
-          onDelete={ids => setInvoices(prev => prev.filter(i => !ids.includes(i.id)))}
+          onDelete={ids => {
+            setInvoices(prev => prev.filter(i => !ids.includes(i.id)));
+            deleteInvoicesRemote(ids);
+          }}
         />
       )}
       {screen === 'create-invoice' && (
