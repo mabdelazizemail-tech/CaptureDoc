@@ -8,10 +8,15 @@ import HealthCheck from './pages/HealthCheck';
 import DatabaseDebugger from './pages/DatabaseDebugger';
 import HRDashboard from './pages/HR/HRDashboard';
 import ProjectManagementDashboard from './pages/ProjectManagementDashboard';
+import CollectionsDashboard from './pages/CollectionsDashboard';
 import Sidebar from './components/Sidebar';
 import { User } from './services/types';
 import { StorageService } from './services/storage';
 import { supabase } from './services/supabaseClient';
+
+const FINANCE_ONLY_USERS = ['taher.mohamed@pbkadvisory.com'];
+const isFinanceOnly = (u: User | null) =>
+  !!u && FINANCE_ONLY_USERS.includes((u.username || '').toLowerCase());
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -73,6 +78,8 @@ const App: React.FC = () => {
       setActivePage('health-check');
     } else if (params.get('page') === 'debug') {
       setActivePage('debug');
+    } else if (isFinanceOnly(loggedInUser)) {
+      setActivePage('collections');
     } else {
       if (loggedInUser.role === 'it_specialist') {
         setActivePage('assets');
@@ -147,6 +154,7 @@ const App: React.FC = () => {
                     {activePage === 'assets' && 'إدارة الأصول والصيانة'}
                     {activePage === 'tickets' && 'نظام التذاكر والدعم الفني'}
                     {activePage === 'hr' && 'إدارة الموارد البشرية (HR)'}
+                    {activePage === 'collections' && 'التحصيلات'}
                   </h1>
                   <p className="text-gray-500 text-sm mt-1">
                     {new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
@@ -155,7 +163,9 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {activePage === 'health-check' ? (
+            {isFinanceOnly(user) ? (
+              <CollectionsDashboard user={user} />
+            ) : activePage === 'health-check' ? (
               <HealthCheck user={user} />
             ) : activePage === 'debug' ? (
               <DatabaseDebugger />
@@ -165,6 +175,8 @@ const App: React.FC = () => {
               <TicketSystem user={user} />
             ) : activePage === 'hr' ? (
               <HRDashboard user={user} />
+            ) : activePage === 'collections' ? (
+              <CollectionsDashboard user={user} />
             ) : activePage === 'pm-dashboard' || activePage === 'project-management' ? (
               <ProjectManagementDashboard user={user} />
             ) : isAdmin ? (
