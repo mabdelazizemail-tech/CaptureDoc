@@ -1292,7 +1292,7 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
           invoices={invoices}
           onOpen={openInvoice}
           onNew={goCreateInvoice}
-          canDelete={user.role === 'super_admin' || user.role === 'power_admin'}
+          canDelete={user.role === 'super_admin' || user.role === 'power_admin' || (user.username || '').toLowerCase() === 'taher.mohamed@pbkadvisory.com'}
           onDelete={ids => {
             setInvoices(prev => prev.filter(i => !ids.includes(i.id)));
             deleteInvoicesRemote(ids);
