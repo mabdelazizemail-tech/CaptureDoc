@@ -22,6 +22,7 @@ interface Invoice {
   id: string;
   invoiceNo: string;
   customer: string;
+  projectName?: string;
   invoiceDate: string;
   dueDate: string;
   amount: number;
@@ -438,6 +439,7 @@ const InvoiceListScreen: React.FC<{
               )}
               <th className="px-5 py-3 text-right">رقم الفاتورة</th>
               <th className="px-5 py-3 text-right">العميل</th>
+              <th className="px-5 py-3 text-right">اسم المشروع</th>
               <th className="px-5 py-3 text-right">تاريخ الفاتورة</th>
               <th className="px-5 py-3 text-right">الاستحقاق</th>
               <th className="px-5 py-3 text-right">الإجمالي</th>
@@ -449,7 +451,7 @@ const InvoiceListScreen: React.FC<{
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={canDelete ? 9 : 8} className="px-5 py-10 text-center text-gray-500">لا توجد فواتير مطابقة</td>
+                <td colSpan={canDelete ? 10 : 9} className="px-5 py-10 text-center text-gray-500">لا توجد فواتير مطابقة</td>
               </tr>
             ) : filtered.map(inv => (
               <tr key={inv.id} className="border-b border-gray-700/50 hover:bg-[#2d3648] transition-colors cursor-pointer" onClick={() => onOpen(inv)}>
@@ -465,6 +467,7 @@ const InvoiceListScreen: React.FC<{
                 )}
                 <td className="px-5 py-3 text-white font-mono text-xs">{inv.invoiceNo}</td>
                 <td className="px-5 py-3 text-gray-300">{inv.customer}</td>
+                <td className="px-5 py-3 text-gray-300">{inv.projectName || '—'}</td>
                 <td className="px-5 py-3 text-gray-400">{inv.invoiceDate}</td>
                 <td className="px-5 py-3 text-gray-400">{inv.dueDate}</td>
                 <td className="px-5 py-3 text-white font-semibold">
@@ -505,6 +508,7 @@ const InvoiceListScreen: React.FC<{
 const emptyForm = (): Omit<Invoice, 'id' | 'payments' | 'collectionStatus' | 'paymentStatus' | 'lastFollowUp' | 'nextFollowUp' | 'notes'> => ({
   invoiceNo: '',
   customer: '',
+  projectName: '',
   invoiceDate: new Date().toISOString().slice(0, 10),
   dueDate: '',
   amount: 0,
@@ -522,7 +526,7 @@ const CreateInvoiceScreen: React.FC<{
 }> = ({ editing, onSave, onCancel }) => {
   const [form, setForm] = useState(() =>
     editing
-      ? { invoiceNo: editing.invoiceNo, customer: editing.customer, invoiceDate: editing.invoiceDate, dueDate: editing.dueDate, amount: editing.amount, tax: editing.tax, total: editing.total, invoiceStatus: editing.invoiceStatus, currency: editing.currency || 'EGP', exchangeRate: editing.exchangeRate || 0 }
+      ? { invoiceNo: editing.invoiceNo, customer: editing.customer, projectName: editing.projectName || '', invoiceDate: editing.invoiceDate, dueDate: editing.dueDate, amount: editing.amount, tax: editing.tax, total: editing.total, invoiceStatus: editing.invoiceStatus, currency: editing.currency || 'EGP', exchangeRate: editing.exchangeRate || 0 }
       : emptyForm()
   );
 
@@ -767,6 +771,9 @@ const CreateInvoiceScreen: React.FC<{
                 </p>
               )}
             </Field>
+            <Field label="اسم المشروع">
+              <input type="text" value={form.projectName || ''} onChange={e => set('projectName', e.target.value)} className={inputCls} placeholder="اسم المشروع (اختياري)" />
+            </Field>
             <Field label="تاريخ الفاتورة" required>
               <input type="date" value={form.invoiceDate} onChange={e => set('invoiceDate', e.target.value)} required className={inputCls} />
             </Field>
@@ -891,6 +898,7 @@ const InvoiceDetailsScreen: React.FC<{
       {/* Invoice Header */}
       <div className="bg-[#232b3e] rounded-xl border border-gray-700 p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
         <InfoCell label="العميل" value={invoice.customer} />
+        <InfoCell label="اسم المشروع" value={invoice.projectName || '—'} />
         <InfoCell label="تاريخ الفاتورة" value={invoice.invoiceDate} />
         <InfoCell label="تاريخ الاستحقاق" value={invoice.dueDate} />
         <InfoCell label="حالة الفاتورة">
