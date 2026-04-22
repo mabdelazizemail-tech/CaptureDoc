@@ -311,6 +311,7 @@ const DashboardScreen: React.FC<{
               <tr className="text-gray-500 text-xs border-b border-gray-700">
                 <th className="px-5 py-3 text-right">رقم الفاتورة</th>
                 <th className="px-5 py-3 text-right">العميل</th>
+                <th className="px-5 py-3 text-right">اسم المشروع</th>
                 <th className="px-5 py-3 text-right">تاريخ الاستحقاق</th>
                 <th className="px-5 py-3 text-right">الرصيد</th>
                 <th className="px-5 py-3 text-right">آخر متابعة</th>
@@ -322,6 +323,7 @@ const DashboardScreen: React.FC<{
                 <tr key={inv.id} className="border-b border-gray-700/50 hover:bg-[#2d3648] transition-colors">
                   <td className="px-5 py-3 text-white font-mono text-xs">{inv.invoiceNo}</td>
                   <td className="px-5 py-3 text-gray-300">{inv.customer}</td>
+                  <td className="px-5 py-3 text-gray-300">{inv.projectName || '—'}</td>
                   <td className="px-5 py-3 text-red-400">{inv.dueDate}</td>
                   <td className="px-5 py-3 text-white font-semibold">{fmt(balanceInEgp(inv))} EGP</td>
                   <td className="px-5 py-3 text-gray-400">{inv.lastFollowUp || '—'}</td>
