@@ -698,11 +698,15 @@ const CreateInvoiceScreen: React.FC<{
   user: User;
 }> = ({ editing, onSave, onAddCreditNote, onCancel, user }) => {
   const [activeTab, setActiveTab] = useState<'invoice' | 'credit-notes'>('invoice');
-  const [form, setForm] = useState(() =>
-    editing
-      ? { invoiceNo: editing.invoiceNo, customer: editing.customer, projectName: editing.projectName || '', invoiceDate: editing.invoiceDate, dueDate: editing.dueDate, amount: editing.amount, tax: editing.tax, total: editing.total, invoiceStatus: editing.invoiceStatus, currency: editing.currency || 'EGP', exchangeRate: editing.exchangeRate || 0, invoiceType: editing.invoiceType || 'توريدات', withholdingTax: editing.withholdingTax || 0, invoiceNotes: editing.invoiceNotes || '' }
-      : emptyForm()
-  );
+  const [form, setForm] = useState(() => {
+    if (editing) {
+      const amt = editing.amount || 0;
+      const tax = (editing.tax > 0) ? editing.tax : Math.round(amt * 0.14 * 100) / 100;
+      const rate = (editing.invoiceType || 'توريدات') === 'خدمات' ? 0.03 : 0.01;
+      return { invoiceNo: editing.invoiceNo, customer: editing.customer, projectName: editing.projectName || '', invoiceDate: editing.invoiceDate, dueDate: editing.dueDate, amount: amt, tax, total: amt + tax, invoiceStatus: editing.invoiceStatus, currency: editing.currency || 'EGP', exchangeRate: editing.exchangeRate || 0, invoiceType: editing.invoiceType || 'توريدات', withholdingTax: editing.withholdingTax > 0 ? editing.withholdingTax : Math.round(amt * rate * 100) / 100, invoiceNotes: editing.invoiceNotes || '' };
+    }
+    return emptyForm();
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [parsing, setParsing] = useState(false);
