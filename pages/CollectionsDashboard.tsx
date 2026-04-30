@@ -1111,7 +1111,7 @@ const CreateInvoiceScreen: React.FC<{
                     </div>
                     <div className="flex items-center justify-between px-4 py-3 border-t border-orange-700/30 bg-[#1e1408]">
                       <span className="text-gray-300 text-sm">إجمالي الفاتورة بعد الخصم</span>
-                      <span className="text-green-400 font-bold text-lg">{fmt(editing!.total - creditTotal - cnNet)} EGP</span>
+                      <span className="text-green-400 font-bold text-lg">{fmt(editing!.total - (editing!.withholdingTax || 0) - creditTotal - cnNet)} EGP</span>
                     </div>
                   </div>
                 </div>
