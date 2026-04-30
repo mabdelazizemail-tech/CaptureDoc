@@ -1518,7 +1518,9 @@ const PaymentHistoryTable: React.FC<{
   invoice: Invoice;
   canEdit?: boolean;
   onUpdatePayment?: (paymentId: string, patch: Partial<Payment>) => void;
-}> = ({ invoice, canEdit, onUpdatePayment }) => {
+  onDeletePayment?: (paymentId: string) => void;
+}> = ({ invoice, canEdit, onUpdatePayment, onDeletePayment }) => {
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{
     receiptDate: string;
@@ -1712,11 +1714,30 @@ const PaymentHistoryTable: React.FC<{
                     {p.notes && <span className="truncate max-w-[200px]">{p.notes}</span>}
                   </div>
                 </div>
-                {canEdit && onUpdatePayment && (
-                  <button onClick={() => startEdit(p)}
-                    className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-yellow-400 transition-all shrink-0">
-                    <span className="material-icons text-base">edit</span>
-                  </button>
+                {canEdit && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    {onUpdatePayment && (
+                      <button onClick={() => startEdit(p)}
+                        className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-yellow-400 transition-all">
+                        <span className="material-icons text-base">edit</span>
+                      </button>
+                    )}
+                    {onDeletePayment && (
+                      confirmDeleteId === p.id ? (
+                        <span className="flex items-center gap-1 text-xs">
+                          <button onClick={() => { onDeletePayment(p.id); setConfirmDeleteId(null); }}
+                            className="text-red-400 hover:text-red-300 font-semibold">حذف</button>
+                          <button onClick={() => setConfirmDeleteId(null)}
+                            className="text-gray-500 hover:text-gray-300">إلغاء</button>
+                        </span>
+                      ) : (
+                        <button onClick={() => setConfirmDeleteId(p.id)}
+                          className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-all">
+                          <span className="material-icons text-base">delete</span>
+                        </button>
+                      )
+                    )}
+                  </div>
                 )}
               </div>
             );
@@ -1739,7 +1760,8 @@ const InvoiceDetailsScreen: React.FC<{
   canEdit?: boolean;
   onSaveCurrency?: (patch: Pick<Invoice, 'currency' | 'exchangeRate' | 'amount' | 'tax' | 'total' | 'withholdingTax'>) => void;
   onUpdatePayment?: (paymentId: string, patch: Partial<Payment>) => void;
-}> = ({ invoice, onEdit, onAddPayment, onUpdateCollection, onAddCreditNote, onBack, canEdit, onSaveCurrency, onUpdatePayment }) => {
+  onDeletePayment?: (paymentId: string) => void;
+}> = ({ invoice, onEdit, onAddPayment, onUpdateCollection, onAddCreditNote, onBack, canEdit, onSaveCurrency, onUpdatePayment, onDeletePayment }) => {
   const [detailTab, setDetailTab] = useState<'details' | 'credit-notes'>('details');
   const [followUp, setFollowUp] = useState({
     collectionStatus: invoice.collectionStatus,
@@ -2014,6 +2036,7 @@ const InvoiceDetailsScreen: React.FC<{
             invoice={invoice}
             canEdit={canEdit}
             onUpdatePayment={onUpdatePayment}
+            onDeletePayment={onDeletePayment}
           />
         </>
       )}
@@ -2806,10 +2829,19 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
       const payments = inv.payments.filter(p => p.id !== paymentId);
       const totalPaidAmt = payments.reduce((s, p) => s + p.amountReceived, 0);
       const paymentStatus: PaymentStatus = totalPaidAmt >= inv.total ? 'Paid' : totalPaidAmt > 0 ? 'Partial' : 'Unpaid';
-      const updated = { ...inv, payments, paymentStatus };
+      const collectionStatus: CollectionStatus = totalPaidAmt >= inv.total ? 'Paid' : totalPaidAmt > 0 ? 'Partially Paid' : inv.collectionStatus;
+      const updated = { ...inv, payments, paymentStatus, collectionStatus };
       upsertInvoiceRemote(updated);
       return updated;
     }));
+    setSelectedInvoice(prev => {
+      if (!prev || prev.id !== invoiceId) return prev;
+      const payments = prev.payments.filter(p => p.id !== paymentId);
+      const totalPaidAmt = payments.reduce((s, p) => s + p.amountReceived, 0);
+      const paymentStatus: PaymentStatus = totalPaidAmt >= prev.total ? 'Paid' : totalPaidAmt > 0 ? 'Partial' : 'Unpaid';
+      const collectionStatus: CollectionStatus = totalPaidAmt >= prev.total ? 'Paid' : totalPaidAmt > 0 ? 'Partially Paid' : prev.collectionStatus;
+      return { ...prev, payments, paymentStatus, collectionStatus };
+    });
   };
 
   const updatePayment = (invoiceId: string, paymentId: string, patch: Partial<Payment>) => {
@@ -2818,7 +2850,8 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
       const payments = inv.payments.map(p => p.id === paymentId ? { ...p, ...patch } : p);
       const totalPaidAmt = payments.reduce((s, p) => s + p.amountReceived, 0);
       const paymentStatus: PaymentStatus = totalPaidAmt >= inv.total ? 'Paid' : totalPaidAmt > 0 ? 'Partial' : 'Unpaid';
-      const updated = { ...inv, payments, paymentStatus };
+      const collectionStatus: CollectionStatus = totalPaidAmt >= inv.total ? 'Paid' : totalPaidAmt > 0 ? 'Partially Paid' : inv.collectionStatus;
+      const updated = { ...inv, payments, paymentStatus, collectionStatus };
       upsertInvoiceRemote(updated);
       return updated;
     }));
@@ -2827,7 +2860,8 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
       const payments = prev.payments.map(p => p.id === paymentId ? { ...p, ...patch } : p);
       const totalPaidAmt = payments.reduce((s, p) => s + p.amountReceived, 0);
       const paymentStatus: PaymentStatus = totalPaidAmt >= prev.total ? 'Paid' : totalPaidAmt > 0 ? 'Partial' : 'Unpaid';
-      return { ...prev, payments, paymentStatus };
+      const collectionStatus: CollectionStatus = totalPaidAmt >= prev.total ? 'Paid' : totalPaidAmt > 0 ? 'Partially Paid' : prev.collectionStatus;
+      return { ...prev, payments, paymentStatus, collectionStatus };
     });
   };
 
@@ -2961,6 +2995,7 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
           canEdit={isAdmin}
           onSaveCurrency={patch => patchInvoice(selectedInvoice.id, patch)}
           onUpdatePayment={(pid, patch) => updatePayment(selectedInvoice.id, pid, patch)}
+          onDeletePayment={(pid) => deletePayment(selectedInvoice.id, pid)}
         />
       )}
       {screen === 'payment-entry' && (
