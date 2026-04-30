@@ -814,20 +814,32 @@ const CreateInvoiceScreen: React.FC<{
       const data = await etaCall({ action: 'get', uuid: row.uuid });
       const inv = data.ok ? data.invoice : null;
       const add30 = (iso: string) => { const d = new Date(iso); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); };
-      setForm(f => ({
-        ...f,
-        invoiceNo:   inv?.invoiceNo   || row.internalId   || f.invoiceNo,
-        customer:    inv?.receiver    || row.receiverName  || f.customer,
-        invoiceDate: inv?.invoiceDate || row.dateTimeIssued || f.invoiceDate,
-        dueDate:     (inv?.invoiceDate || row.dateTimeIssued) ? add30(inv?.invoiceDate || row.dateTimeIssued) : f.dueDate,
-        amount:      inv?.amount > 0  ? inv.amount  : row.netAmount > 0 ? row.netAmount : f.amount,
-        tax:         inv?.tax    > 0  ? inv.tax     : f.tax,
-        total:       inv?.total  > 0  ? inv.total   : row.total > 0 ? row.total : f.total,
-      }));
+      setForm(f => {
+        const amt = inv?.amount > 0 ? inv.amount : row.netAmount > 0 ? row.netAmount : f.amount;
+        const tax = inv?.tax > 0 ? inv.tax : Math.round(amt * 0.14 * 100) / 100;
+        const total = inv?.total > 0 ? inv.total : row.total > 0 ? row.total : amt + tax;
+        const rate = (f.invoiceType === 'خدمات') ? 0.03 : 0.01;
+        return {
+          ...f,
+          invoiceNo:      inv?.invoiceNo   || row.internalId   || f.invoiceNo,
+          customer:       inv?.receiver    || row.receiverName  || f.customer,
+          invoiceDate:    inv?.invoiceDate || row.dateTimeIssued || f.invoiceDate,
+          dueDate:        (inv?.invoiceDate || row.dateTimeIssued) ? add30(inv?.invoiceDate || row.dateTimeIssued) : f.dueDate,
+          amount:         amt,
+          tax,
+          total,
+          withholdingTax: Math.round(amt * rate * 100) / 100,
+        };
+      });
       setEtaOpen(false);
     } catch {
       const add30 = (iso: string) => { const d = new Date(iso); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); };
-      setForm(f => ({ ...f, invoiceNo: row.internalId || f.invoiceNo, invoiceDate: row.dateTimeIssued || f.invoiceDate, dueDate: row.dateTimeIssued ? add30(row.dateTimeIssued) : f.dueDate, amount: row.netAmount || f.amount, total: row.total || f.total }));
+      setForm(f => {
+        const amt = row.netAmount || f.amount;
+        const tax = Math.round(amt * 0.14 * 100) / 100;
+        const rate = (f.invoiceType === 'خدمات') ? 0.03 : 0.01;
+        return { ...f, invoiceNo: row.internalId || f.invoiceNo, invoiceDate: row.dateTimeIssued || f.invoiceDate, dueDate: row.dateTimeIssued ? add30(row.dateTimeIssued) : f.dueDate, amount: amt, tax, total: row.total || amt + tax, withholdingTax: Math.round(amt * rate * 100) / 100 };
+      });
       setEtaOpen(false);
     } finally { setEtaImporting(''); }
   };
