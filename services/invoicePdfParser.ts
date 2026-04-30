@@ -343,7 +343,7 @@ export function parseInvoiceText(text: string): ParsedInvoice {
   };
 }
 
-// ─── Combined ─────────────────────────────────────────────────────────────────
+// ─── Combined (Receivables) ───────────────────────────────────────────────────
 
 export async function parseInvoicePdf(file: File): Promise<ParsedInvoice> {
   const arrayBuffer = await file.arrayBuffer();
@@ -366,6 +366,171 @@ export async function parseInvoicePdf(file: File): Promise<ParsedInvoice> {
   } catch (err) {
     console.warn('OCR fallback failed:', err);
     // Keep whatever customer value text-layer produced, if any.
+  }
+
+  return parsed;
+}
+
+// ─── Payables Parser (text-layer only — no Tesseract, works on any device) ───
+
+export interface ParsedPayableInvoice {
+  invoiceNo: string;
+  supplier: string;
+  invoiceDate: string;   // YYYY-MM-DD
+  dueDate: string;       // YYYY-MM-DD
+  amount: number;        // pre-tax
+  tax: number;
+  total: number;
+  withholdingTax: number;
+  rawText: string;
+  matched: Partial<Record<'invoiceNo' | 'supplier' | 'invoiceDate' | 'dueDate' | 'amount' | 'tax' | 'total' | 'withholdingTax', boolean>>;
+}
+
+function firstMatch(text: string, patterns: RegExp[]): string | undefined {
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m?.[1]?.trim()) return m[1].trim();
+  }
+}
+
+export function parsePayableInvoiceText(text: string): ParsedPayableInvoice {
+  const matched: ParsedPayableInvoice['matched'] = {};
+  const t = text;
+
+  // ── Invoice Number ──────────────────────────────────────────────────────────
+  const invoiceNoRaw = firstMatch(t, [
+    // Explicit "Internal ID" label (ETA invoices)
+    /Internal\s*ID\s*[:\-]?\s*([A-Za-z0-9][A-Za-z0-9\-\/\.]{3,})/i,
+    // Structured codes like INV-LDC2026-00798
+    /\b(INV-[A-Z0-9][A-Z0-9\-]{3,})/i,
+    /(?:Invoice\s*No\.?|Invoice\s*Number|رقم\s*الفاتورة|رقم\s*فاتورة)\s*[:\-]?\s*([A-Za-z0-9\-\/\.]+)/i,
+    /\bID\s*[:\-]\s*([A-Z0-9]{6,})/,
+    /(?:فاتورة|Invoice)\s*#?\s*([A-Za-z0-9\-\/]{3,})/i,
+    /No\.?\s*[:\-]?\s*([A-Za-z0-9\-\/]{4,})/i,
+  ]);
+  const invoiceNo = invoiceNoRaw || '';
+  if (invoiceNo) matched.invoiceNo = true;
+
+  // ── Supplier / Issuer Name ──────────────────────────────────────────────────
+  // Try ETA "Issuer" block first, then heuristics
+  const arabicChars = '\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF';
+  const arabicRun = `[${arabicChars}][${arabicChars}\\s0-9.،\\-&]{2,}`;
+
+  let supplier = '';
+  // ETA Issuer block
+  const issuerBlock = t.match(/Issuer\s*\(\s*From\s*\)([\s\S]{0,400}?)(?:Recipients|$)/i);
+  if (issuerBlock) {
+    const labelled = issuerBlock[1].match(new RegExp(`Taxpayer\\s*Name\\s*:?\\s*(${arabicRun})`, 'i'));
+    const reversed = issuerBlock[1].match(new RegExp(`(${arabicRun})\\s*:?\\s*Name\\s*Taxpayer`, 'i'));
+    if (labelled) supplier = labelled[1].trim();
+    else if (reversed) supplier = reversed[1].trim();
+    else {
+      const any = issuerBlock[1].match(new RegExp(`(${arabicRun})`));
+      if (any) supplier = any[1].trim();
+    }
+  }
+  // Generic Arabic company name fallback — first long Arabic run in the doc
+  if (!supplier) {
+    const firstArabic = t.match(new RegExp(`([${arabicChars}][${arabicChars}\\s0-9.،\\-&]{4,})`));
+    if (firstArabic) supplier = firstArabic[1].trim();
+  }
+  if (supplier) {
+    supplier = normalizeArabic(cleanArabic(supplier));
+    matched.supplier = true;
+  }
+
+  // ── Invoice Date ────────────────────────────────────────────────────────────
+  const invoiceDateRaw = firstMatch(t, [
+    /Issuance\s*Date\s*[:\-]?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+    /(?:تاريخ\s*الفاتورة|تاريخ\s*الإصدار|Invoice\s*Date|Date\s*of\s*Invoice)\s*[:\-]?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+    /(?:Date|تاريخ)\s*[:\-]\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+    /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/,
+  ]);
+  const invoiceDate = normalizeDate(invoiceDateRaw);
+  if (invoiceDate) matched.invoiceDate = true;
+
+  // ── Due Date ────────────────────────────────────────────────────────────────
+  const dueDateRaw = firstMatch(t, [
+    /(?:Due\s*Date|Payment\s*Due|تاريخ\s*الاستحقاق|الاستحقاق)\s*[:\-]?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+  ]);
+  const dueDate = dueDateRaw ? normalizeDate(dueDateRaw) : (invoiceDate ? addDays(invoiceDate, 30) : '');
+  if (dueDateRaw) matched.dueDate = true;
+
+  // ── Amounts ─────────────────────────────────────────────────────────────────
+  const amountRaw = firstMatch(t, [
+    /Total\s*Sales?\s*\(?(?:EGP|ج\.?م)?\)?\s*([\d,]+\.?\d*)/i,
+    /(?:المبلغ\s*قبل\s*الضريبة|Net\s*Amount|Subtotal|Sub\s*Total)\s*[:\-]?\s*([\d,]+\.?\d*)/i,
+    /(?:Amount|مبلغ)\s*[:\-]\s*([\d,]+\.?\d*)/i,
+  ]);
+  const taxRaw = firstMatch(t, [
+    /Value\s*[Aa]dded\s*[Tt]ax\s*\(?(?:EGP|ج\.?م)?\)?\s*([\d,]+\.?\d*)/i,
+    /(?:ضريبة\s*القيمة\s*المضافة|VAT|Tax\s*Amount)\s*[:\-]?\s*([\d,]+\.?\d*)/i,
+    /(?:Tax|ضريبة)\s*[:\-]\s*([\d,]+\.?\d*)/i,
+  ]);
+  const totalRaw = firstMatch(t, [
+    /Total\s*Amount\s*\(?(?:EGP|ج\.?م)?\)?\s*([\d,]+\.?\d*)/i,
+    /(?:الإجمالي|Grand\s*Total|Total\s*Due|الإجمالي\s*المستحق)\s*[:\-]?\s*([\d,]+\.?\d*)/i,
+    /(?:Total|إجمالي)\s*[:\-]\s*([\d,]+\.?\d*)/i,
+  ]);
+  const withholdingRaw = firstMatch(t, [
+    /(?:Withholding\s*Tax|خصم\s*الضريبة|ضريبة\s*الخصم\s*تحت\s*الحساب|خصم\s*تحت\s*الحساب)\s*[:\-]?\s*([\d,]+\.?\d*)/i,
+  ]);
+
+  const amount = toNumber(amountRaw);
+  const tax    = toNumber(taxRaw);
+  const total  = toNumber(totalRaw) || (amount + tax) || 0;
+  const withholdingTax = toNumber(withholdingRaw);
+
+  if (amountRaw) matched.amount = true;
+  if (taxRaw)    matched.tax    = true;
+  if (totalRaw)  matched.total  = true;
+  if (withholdingRaw) matched.withholdingTax = true;
+
+  return { invoiceNo, supplier, invoiceDate, dueDate, amount, tax, total, withholdingTax, rawText: t, matched };
+}
+
+// Extract Arabic supplier name from OCR output — looks in "Issuer (From)" block.
+function extractSupplierFromOcrText(ocr: string): string {
+  const block = ocr.match(/Issuer\s*\(\s*From\s*\)([\s\S]{0,800}?)(?:Recipients|Registration\s*Number|Taxpayer\s*Activity|$)/i);
+  const body = block ? block[1] : ocr.slice(0, 800);
+
+  // Single-line Arabic run — no newline crossing, no address digits like شقة 102
+  const AR = '[؀-ۿ][؀-ۿ \t.،\\-&]+';
+  // "Taxpayer Name: <arabic>"  or  "Taxpayer: <arabic>"  (label → name)
+  const labelled = body.match(new RegExp(`Taxpayer(?:[ \\t]*Name)?[ \\t]*[:\\-]?[ \\t]*(${AR})`, 'i'));
+  if (labelled) return cleanArabic(labelled[1]);
+  // "<arabic> : Taxpayer"  or  "<arabic> : Taxpayer Name"  (RTL-reversed OCR)
+  const reversed = body.match(new RegExp(`(${AR})[ \\t]*[:\\-][ \\t]*Taxpayer`, 'i'));
+  if (reversed) return cleanArabic(reversed[1]);
+
+  // Fallback: longest single-line Arabic run, skipping address lines
+  const addressKw = /شقة|عمارة|طريق|شارع|ميدان|حي\s|مبنى|\d{3,}/;
+  const runs = (body.match(/[؀-ۿ][؀-ۿ \t.،\-&]{2,}/g) || [])
+    .filter(r => !addressKw.test(r));
+  if (runs.length) {
+    runs.sort((a, b) => b.trim().length - a.trim().length);
+    return cleanArabic(runs[0]);
+  }
+  return '';
+}
+
+export async function parsePayableInvoicePdf(file: File): Promise<ParsedPayableInvoice> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+  const text = await extractTextFromPdfDoc(pdf);
+  const parsed = parsePayableInvoiceText(text);
+
+  // OCR pass for supplier name — text-layer Arabic word spacing is unreliable
+  // on visual-order PDFs; Tesseract renders the page and reads correctly shaped text.
+  try {
+    const ocrText = await ocrPdfFirstPage(pdf);
+    const ocrSupplier = extractSupplierFromOcrText(ocrText);
+    if (ocrSupplier) {
+      parsed.supplier = ocrSupplier;
+      parsed.matched.supplier = true;
+    }
+  } catch (err) {
+    console.warn('Payables OCR fallback failed:', err);
   }
 
   return parsed;

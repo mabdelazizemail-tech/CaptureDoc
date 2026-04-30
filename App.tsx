@@ -9,6 +9,8 @@ import DatabaseDebugger from './pages/DatabaseDebugger';
 import HRDashboard from './pages/HR/HRDashboard';
 import ProjectManagementDashboard from './pages/ProjectManagementDashboard';
 import CollectionsDashboard from './pages/CollectionsDashboard';
+import PayablesDashboard from './pages/PayablesDashboard';
+import JournalEntriesDashboard from './pages/JournalEntriesDashboard';
 import Sidebar from './components/Sidebar';
 import { User } from './services/types';
 import { StorageService } from './services/storage';
@@ -155,6 +157,8 @@ const App: React.FC = () => {
                     {activePage === 'tickets' && 'نظام التذاكر والدعم الفني'}
                     {activePage === 'hr' && 'إدارة الموارد البشرية (HR)'}
                     {activePage === 'collections' && 'التحصيلات'}
+                    {activePage === 'payables' && 'المدفوعات — إدارة حسابات الموردين'}
+                    {activePage === 'journal-entries' && 'القيود المحاسبية — دفتر اليومية العام'}
                   </h1>
                   <p className="text-gray-500 text-sm mt-1">
                     {new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
@@ -163,7 +167,9 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {isFinanceOnly(user) ? (
+            {isFinanceOnly(user) && activePage === 'payables' ? (
+              <PayablesDashboard user={user} />
+            ) : isFinanceOnly(user) ? (
               <CollectionsDashboard user={user} />
             ) : activePage === 'health-check' ? (
               <HealthCheck user={user} />
@@ -177,6 +183,10 @@ const App: React.FC = () => {
               <HRDashboard user={user} />
             ) : activePage === 'collections' ? (
               <CollectionsDashboard user={user} />
+            ) : activePage === 'payables' ? (
+              <PayablesDashboard user={user} />
+            ) : activePage === 'journal-entries' ? (
+              <JournalEntriesDashboard user={user} />
             ) : activePage === 'pm-dashboard' || activePage === 'project-management' ? (
               <ProjectManagementDashboard user={user} />
             ) : isAdmin ? (

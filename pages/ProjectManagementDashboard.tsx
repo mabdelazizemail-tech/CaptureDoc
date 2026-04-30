@@ -63,6 +63,64 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
 
     const [loading, setLoading] = useState(false);
     const [tab, setTab] = useState<'executive' | 'overview' | 'logs' | 'inventory' | 'timesheets' | 'expenses'>('executive');
+
+    // ── Sort state for each table ──────────────────────────────────────────────
+    type SortDir = 'asc' | 'desc';
+    function pmCmp(a: any, b: any): number {
+        if (a == null && b == null) return 0;
+        if (a == null) return 1;
+        if (b == null) return -1;
+        if (typeof a === 'number' && typeof b === 'number') return a - b;
+        return String(a).localeCompare(String(b), 'ar');
+    }
+    function pmApplyDir(v: number, dir: SortDir) { return dir === 'asc' ? v : -v; }
+
+    const [execSortCol, setExecSortCol] = useState<string | null>(null);
+    const [execSortDir, setExecSortDir] = useState<SortDir>('asc');
+    const handleExecSort = (col: string) => {
+        setExecSortDir(prev => execSortCol === col && prev === 'asc' ? 'desc' : 'asc');
+        setExecSortCol(col);
+    };
+
+    const [invSortCol, setInvSortCol] = useState<string | null>(null);
+    const [invSortDir, setInvSortDir] = useState<SortDir>('asc');
+    const handleInvSort = (col: string) => {
+        setInvSortDir(prev => invSortCol === col && prev === 'asc' ? 'desc' : 'asc');
+        setInvSortCol(col);
+    };
+
+    const [logSortCol, setLogSortCol] = useState<string>('log_date');
+    const [logSortDir, setLogSortDir] = useState<SortDir>('desc');
+    const handleLogSort = (col: string) => {
+        setLogSortDir(prev => logSortCol === col && prev === 'asc' ? 'desc' : 'asc');
+        setLogSortCol(col);
+    };
+
+    const [expSortCol, setExpSortCol] = useState<string>('expense_date');
+    const [expSortDir, setExpSortDir] = useState<SortDir>('desc');
+    const handleExpSort = (col: string) => {
+        setExpSortDir(prev => expSortCol === col && prev === 'asc' ? 'desc' : 'asc');
+        setExpSortCol(col);
+    };
+
+    const [tsSortCol, setTsSortCol] = useState<string>('work_date');
+    const [tsSortDir, setTsSortDir] = useState<SortDir>('desc');
+    const handleTsSort = (col: string) => {
+        setTsSortDir(prev => tsSortCol === col && prev === 'asc' ? 'desc' : 'asc');
+        setTsSortCol(col);
+    };
+
+    const PMSortTh: React.FC<{
+        label: string; col: string; sortCol: string | null; sortDir: SortDir;
+        onSort: (col: string) => void; className?: string;
+    }> = ({ label, col, sortCol, sortDir, onSort, className = 'px-3 py-3' }) => (
+        <th className={`${className} cursor-pointer select-none hover:text-gray-700 transition-colors`} onClick={() => onSort(col)}>
+            <span className="inline-flex items-center gap-1">
+                {label}
+                <span className="text-gray-400 text-[10px]">{sortCol === col ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}</span>
+            </span>
+        </th>
+    );
     const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
 
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -104,6 +162,11 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
     }, [startDate, endDate, totalContractVolume]);
 
     useEffect(() => { loadProjects(); }, [user]);
+
+    // Sync volume input when data reloads
+    useEffect(() => {
+        setVolumeInput(actualMonthlyAchieved > 0 ? String(actualMonthlyAchieved) : '');
+    }, [actualMonthlyAchieved]);
 
     useEffect(() => {
         if (tab === 'overview' && siteLogs.length > 0) {
@@ -470,6 +533,79 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
 
 
 
+    // ── Sorted table data ────────────────────────────────────────────
+    const sortedFinancials = useMemo(() => {
+        if (!execSortCol) return projectFinancials;
+        return [...projectFinancials].sort((a, b) => {
+            let v = 0;
+            if (execSortCol === 'project') v = pmCmp(a.project.name, b.project.name);
+            else if (execSortCol === 'revenue') v = pmCmp(a.revenue, b.revenue);
+            else if (execSortCol === 'salaryCost') v = pmCmp(a.salaryCost, b.salaryCost);
+            else if (execSortCol === 'expenses') v = pmCmp(a.directCost + a.ticketCost, b.directCost + b.ticketCost);
+            else if (execSortCol === 'totalCost') v = pmCmp(a.totalCost, b.totalCost);
+            else if (execSortCol === 'grossProfit') v = pmCmp(a.grossProfit, b.grossProfit);
+            else if (execSortCol === 'grossMargin') v = pmCmp(a.grossMargin, b.grossMargin);
+            else if (execSortCol === 'actualVolume') v = pmCmp(a.actualVolume, b.actualVolume);
+            else if (execSortCol === 'achievementPct') v = pmCmp(a.achievementPct, b.achievementPct);
+            else if (execSortCol === 'costPerUnit') v = pmCmp(a.costPerUnit, b.costPerUnit);
+            else if (execSortCol === 'revenuePerUnit') v = pmCmp(a.revenuePerUnit, b.revenuePerUnit);
+            else if (execSortCol === 'backlog') v = pmCmp(a.backlogVolume, b.backlogVolume);
+            return pmApplyDir(v, execSortDir);
+        });
+    }, [projectFinancials, execSortCol, execSortDir]);
+
+    const sortedInventory = useMemo(() => {
+        if (!invSortCol) return inventory;
+        return [...inventory].sort((a, b) => {
+            let v = 0;
+            if (invSortCol === 'document_type') v = pmCmp(a.document_type, b.document_type);
+            else if (invSortCol === 'total_volume') v = pmCmp(a.total_volume, b.total_volume);
+            else if (invSortCol === 'processed_volume') v = pmCmp(a.processed_volume, b.processed_volume);
+            else if (invSortCol === 'remaining') v = pmCmp(a.total_volume - a.processed_volume, b.total_volume - b.processed_volume);
+            else if (invSortCol === 'pct') v = pmCmp(a.processed_volume / (a.total_volume || 1), b.processed_volume / (b.total_volume || 1));
+            return pmApplyDir(v, invSortDir);
+        });
+    }, [inventory, invSortCol, invSortDir]);
+
+    const sortedLogs = useMemo(() => {
+        return [...siteLogs].sort((a, b) => {
+            let v = 0;
+            if (logSortCol === 'log_date') v = pmCmp(a.log_date, b.log_date);
+            else if (logSortCol === 'prep_volume') v = pmCmp(a.prep_volume, b.prep_volume);
+            else if (logSortCol === 'scan_volume') v = pmCmp(a.scan_volume, b.scan_volume);
+            else if (logSortCol === 'qc_volume') v = pmCmp(a.qc_volume, b.qc_volume);
+            else if (logSortCol === 'index_volume') v = pmCmp(a.index_volume, b.index_volume);
+            return pmApplyDir(v, logSortDir);
+        });
+    }, [siteLogs, logSortCol, logSortDir]);
+
+    const sortedExpenses = useMemo(() => {
+        return [...expenses].sort((a, b) => {
+            let v = 0;
+            if (expSortCol === 'expense_date') v = pmCmp(a.expense_date, b.expense_date);
+            else if (expSortCol === 'category') v = pmCmp(a.category, b.category);
+            else if (expSortCol === 'amount') v = pmCmp(a.amount, b.amount);
+            else if (expSortCol === 'description') v = pmCmp(a.description, b.description);
+            return pmApplyDir(v, expSortDir);
+        });
+    }, [expenses, expSortCol, expSortDir]);
+
+    const sortedTimesheets = useMemo(() => {
+        return [...timesheets].sort((a, b) => {
+            let v = 0;
+            if (tsSortCol === 'work_date') v = pmCmp(a.work_date, b.work_date);
+            else if (tsSortCol === 'employee') v = pmCmp(a.hr_employees?.full_name, b.hr_employees?.full_name);
+            else if (tsSortCol === 'role') v = pmCmp(a.role_in_project, b.role_in_project);
+            else if (tsSortCol === 'hours_worked') v = pmCmp(a.hours_worked, b.hours_worked);
+            else if (tsSortCol === 'volume_processed') v = pmCmp(a.volume_processed, b.volume_processed);
+            else if (tsSortCol === 'rate') v = pmCmp(
+                a.hours_worked > 0 ? a.volume_processed / a.hours_worked : 0,
+                b.hours_worked > 0 ? b.volume_processed / b.hours_worked : 0
+            );
+            return pmApplyDir(v, tsSortDir);
+        });
+    }, [timesheets, tsSortCol, tsSortDir]);
+
     // ── Derived Stats ──────────────────────────────────────────────
     const totalRevenue = projectFinancials.reduce((s, f) => s + f.revenue, 0);
     const totalCost = projectFinancials.reduce((s, f) => s + f.totalCost, 0);
@@ -577,6 +713,34 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
                                         </div>
                                     </>
                                 )}
+                            </div>
+                        )}
+
+                        {/* Inline Monthly Volume Input */}
+                        {isAdmin && currentProject && (
+                            <div className="flex items-center gap-1.5 bg-sky-50 border border-sky-200 rounded-lg px-3 py-1.5">
+                                <span className="material-icons text-sky-500 text-sm">speed</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="الحجم المنجز"
+                                    className="bg-transparent w-28 outline-none text-sm font-bold text-sky-800 placeholder:text-sky-300 placeholder:font-normal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    value={volumeInput}
+                                    onChange={e => setVolumeInput(e.target.value)}
+                                    onFocus={() => { if (!volumeInput && actualMonthlyAchieved > 0) setVolumeInput(String(actualMonthlyAchieved)); }}
+                                />
+                                <button
+                                    onClick={handleSaveVolume}
+                                    disabled={savingVolume || !volumeInput}
+                                    className={`px-2 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-0.5 ${
+                                        savingVolume || !volumeInput
+                                            ? 'bg-gray-200 text-gray-400'
+                                            : 'bg-sky-600 text-white hover:bg-sky-700 shadow-sm'
+                                    }`}
+                                    title="حفظ الحجم المنجز"
+                                >
+                                    {savingVolume ? <span className="material-icons text-xs animate-spin">sync</span> : <span className="material-icons text-xs">check</span>}
+                                </button>
                             </div>
                         )}
 
@@ -715,22 +879,22 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
                                     <table className="w-full text-right text-sm">
                                         <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
                                             <tr>
-                                                <th className="px-3 py-3">المشروع</th>
-                                                <th className="px-3 py-3">الإيراد</th>
-                                                <th className="px-3 py-3">تكلفة رواتب</th>
-                                                <th className="px-3 py-3">مصروفات</th>
-                                                <th className="px-3 py-3">التكلفة الكلية</th>
-                                                <th className="px-3 py-3">Gross Profit</th>
-                                                <th className="px-3 py-3">GM%</th>
-                                                <th className="px-3 py-3">الحجم الفعلي</th>
-                                                <th className="px-3 py-3">Achievement%</th>
-                                                <th className="px-3 py-3">Cost/Unit</th>
-                                                <th className="px-3 py-3">Rev/Unit</th>
-                                                <th className="px-3 py-3">Backlog</th>
+                                                <PMSortTh label="المشروع" col="project" sortCol={execSortCol} sortDir={execSortDir} onSort={handleExecSort} />
+                                                <PMSortTh label="الإيراد" col="revenue" sortCol={execSortCol} sortDir={execSortDir} onSort={handleExecSort} />
+                                                <PMSortTh label="تكلفة رواتب" col="salaryCost" sortCol={execSortCol} sortDir={execSortDir} onSort={handleExecSort} />
+                                                <PMSortTh label="مصروفات" col="expenses" sortCol={execSortCol} sortDir={execSortDir} onSort={handleExecSort} />
+                                                <PMSortTh label="التكلفة الكلية" col="totalCost" sortCol={execSortCol} sortDir={execSortDir} onSort={handleExecSort} />
+                                                <PMSortTh label="Gross Profit" col="grossProfit" sortCol={execSortCol} sortDir={execSortDir} onSort={handleExecSort} />
+                                                <PMSortTh label="GM%" col="grossMargin" sortCol={execSortCol} sortDir={execSortDir} onSort={handleExecSort} />
+                                                <PMSortTh label="الحجم الفعلي" col="actualVolume" sortCol={execSortCol} sortDir={execSortDir} onSort={handleExecSort} />
+                                                <PMSortTh label="Achievement%" col="achievementPct" sortCol={execSortCol} sortDir={execSortDir} onSort={handleExecSort} />
+                                                <PMSortTh label="Cost/Unit" col="costPerUnit" sortCol={execSortCol} sortDir={execSortDir} onSort={handleExecSort} />
+                                                <PMSortTh label="Rev/Unit" col="revenuePerUnit" sortCol={execSortCol} sortDir={execSortDir} onSort={handleExecSort} />
+                                                <PMSortTh label="Backlog" col="backlog" sortCol={execSortCol} sortDir={execSortDir} onSort={handleExecSort} />
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {projectFinancials.map(f => (
+                                            {sortedFinancials.map(f => (
                                                 <tr key={f.project.id} className="border-t hover:bg-gray-50">
                                                     <td className="px-3 py-3 font-semibold text-gray-800">{f.project.name}</td>
                                                     <td className="px-3 py-3 text-emerald-700 font-bold">{fmt(f.revenue)}</td>
@@ -955,11 +1119,14 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
                             <h3 className="text-lg font-bold mb-4 text-gray-700">تتبع المخزون حسب نوع المستند</h3>
                             <table className="w-full text-right text-sm">
                                 <thead className="bg-gray-50 text-gray-500"><tr>
-                                    <th className="px-4 py-2">نوع المستند</th><th className="px-4 py-2">الكمية الإجمالية</th>
-                                    <th className="px-4 py-2">المعالجة</th><th className="px-4 py-2">المتبقي</th><th className="px-4 py-2">الإنجاز%</th>
+                                    <PMSortTh label="نوع المستند" col="document_type" sortCol={invSortCol} sortDir={invSortDir} onSort={handleInvSort} className="px-4 py-2" />
+                                    <PMSortTh label="الكمية الإجمالية" col="total_volume" sortCol={invSortCol} sortDir={invSortDir} onSort={handleInvSort} className="px-4 py-2" />
+                                    <PMSortTh label="المعالجة" col="processed_volume" sortCol={invSortCol} sortDir={invSortDir} onSort={handleInvSort} className="px-4 py-2" />
+                                    <PMSortTh label="المتبقي" col="remaining" sortCol={invSortCol} sortDir={invSortDir} onSort={handleInvSort} className="px-4 py-2" />
+                                    <PMSortTh label="الإنجاز%" col="pct" sortCol={invSortCol} sortDir={invSortDir} onSort={handleInvSort} className="px-4 py-2" />
                                 </tr></thead>
                                 <tbody>
-                                    {inventory.map(inv => (
+                                    {sortedInventory.map(inv => (
                                         <tr key={inv.id} className="border-t hover:bg-gray-50">
                                             <td className="px-4 py-3 font-medium text-gray-800">{inv.document_type}</td>
                                             <td className="px-4 py-3">{inv.total_volume.toLocaleString()}</td>
@@ -980,11 +1147,14 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
                             <h3 className="text-lg font-bold mb-4 text-gray-700">سجل الإنجاز اليومي للإنتاج</h3>
                             <table className="w-full text-right text-sm">
                                 <thead className="bg-gray-50 text-gray-500"><tr>
-                                    <th className="px-4 py-2">التاريخ</th><th className="px-4 py-2">تحضير</th>
-                                    <th className="px-4 py-2">مسح</th><th className="px-4 py-2">جودة</th><th className="px-4 py-2">فهرسة</th>
+                                    <PMSortTh label="التاريخ" col="log_date" sortCol={logSortCol} sortDir={logSortDir} onSort={handleLogSort} className="px-4 py-2" />
+                                    <PMSortTh label="تحضير" col="prep_volume" sortCol={logSortCol} sortDir={logSortDir} onSort={handleLogSort} className="px-4 py-2" />
+                                    <PMSortTh label="مسح" col="scan_volume" sortCol={logSortCol} sortDir={logSortDir} onSort={handleLogSort} className="px-4 py-2" />
+                                    <PMSortTh label="جودة" col="qc_volume" sortCol={logSortCol} sortDir={logSortDir} onSort={handleLogSort} className="px-4 py-2" />
+                                    <PMSortTh label="فهرسة" col="index_volume" sortCol={logSortCol} sortDir={logSortDir} onSort={handleLogSort} className="px-4 py-2" />
                                 </tr></thead>
                                 <tbody>
-                                    {siteLogs.map(log => (
+                                    {sortedLogs.map(log => (
                                         <tr key={log.id} className="border-t hover:bg-gray-50">
                                             <td className="px-4 py-3 text-gray-700">{log.log_date}</td>
                                             <td className="px-4 py-3">{log.prep_volume.toLocaleString()}</td>
@@ -1004,11 +1174,13 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
                             <h3 className="text-lg font-bold mb-4 text-gray-700">المصروفات الخاصة بالموقع — {selectedMonth}</h3>
                             <table className="w-full text-right text-sm">
                                 <thead className="bg-gray-50 text-gray-500"><tr>
-                                    <th className="px-4 py-2">التاريخ</th><th className="px-4 py-2">الفئة</th>
-                                    <th className="px-4 py-2">المبلغ</th><th className="px-4 py-2">الوصف</th>
+                                    <PMSortTh label="التاريخ" col="expense_date" sortCol={expSortCol} sortDir={expSortDir} onSort={handleExpSort} className="px-4 py-2" />
+                                    <PMSortTh label="الفئة" col="category" sortCol={expSortCol} sortDir={expSortDir} onSort={handleExpSort} className="px-4 py-2" />
+                                    <PMSortTh label="المبلغ" col="amount" sortCol={expSortCol} sortDir={expSortDir} onSort={handleExpSort} className="px-4 py-2" />
+                                    <PMSortTh label="الوصف" col="description" sortCol={expSortCol} sortDir={expSortDir} onSort={handleExpSort} className="px-4 py-2" />
                                 </tr></thead>
                                 <tbody>
-                                    {expenses.map(exp => (
+                                    {sortedExpenses.map(exp => (
                                         <tr key={exp.id} className="border-t hover:bg-gray-50">
                                             <td className="px-4 py-3 text-gray-700">{exp.expense_date}</td>
                                             <td className="px-4 py-3 font-medium text-gray-800">{CATEGORY_LABELS[exp.category] || exp.category}</td>
@@ -1031,12 +1203,15 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
                             <h3 className="text-lg font-bold mb-4 text-gray-700">كفاءة الموظفين — Timesheets</h3>
                             <table className="w-full text-right text-sm">
                                 <thead className="bg-gray-50 text-gray-500"><tr>
-                                    <th className="px-4 py-2">التاريخ</th><th className="px-4 py-2">الموظف</th>
-                                    <th className="px-4 py-2">المهام</th><th className="px-4 py-2">الساعات</th>
-                                    <th className="px-4 py-2">الكمية</th><th className="px-4 py-2">معدل/ساعة</th>
+                                    <PMSortTh label="التاريخ" col="work_date" sortCol={tsSortCol} sortDir={tsSortDir} onSort={handleTsSort} className="px-4 py-2" />
+                                    <PMSortTh label="الموظف" col="employee" sortCol={tsSortCol} sortDir={tsSortDir} onSort={handleTsSort} className="px-4 py-2" />
+                                    <PMSortTh label="المهام" col="role" sortCol={tsSortCol} sortDir={tsSortDir} onSort={handleTsSort} className="px-4 py-2" />
+                                    <PMSortTh label="الساعات" col="hours_worked" sortCol={tsSortCol} sortDir={tsSortDir} onSort={handleTsSort} className="px-4 py-2" />
+                                    <PMSortTh label="الكمية" col="volume_processed" sortCol={tsSortCol} sortDir={tsSortDir} onSort={handleTsSort} className="px-4 py-2" />
+                                    <PMSortTh label="معدل/ساعة" col="rate" sortCol={tsSortCol} sortDir={tsSortDir} onSort={handleTsSort} className="px-4 py-2" />
                                 </tr></thead>
                                 <tbody>
-                                    {timesheets.map(sheet => (
+                                    {sortedTimesheets.map(sheet => (
                                         <tr key={sheet.id} className="border-t hover:bg-gray-50">
                                             <td className="px-4 py-3 text-gray-700">{sheet.work_date}</td>
                                             <td className="px-4 py-3 font-medium text-gray-800">{sheet.hr_employees?.full_name || 'غير محدد'}</td>

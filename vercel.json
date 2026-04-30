@@ -1,0 +1,5 @@
+{
+  "functions": {
+    "api/eta-document.ts": { "maxDuration": 60 }
+  }
+}

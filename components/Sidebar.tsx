@@ -37,6 +37,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
         icon: 'account_balance',
         children: [
           { id: 'collections', label: 'التحصيلات', icon: 'payments' },
+          { id: 'payables', label: 'المدفوعات', icon: 'account_balance_wallet' },
+          { id: 'journal-entries', label: 'القيود المحاسبية', icon: 'book' },
         ],
       }];
     }
@@ -56,6 +58,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
     switch (user.role) {
       case 'super_admin':
       case 'power_admin':
+      case 'admin':
         return [
           ...commonAdminItems,
           { id: 'project-management', label: 'إدارة المشاريع', icon: 'manage_accounts' },
@@ -65,6 +68,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
             icon: 'account_balance',
             children: [
               { id: 'collections', label: 'التحصيلات', icon: 'payments' },
+              { id: 'payables', label: 'المدفوعات', icon: 'account_balance_wallet' },
+              { id: 'journal-entries', label: 'القيود المحاسبية', icon: 'book' },
             ],
           },
           ...operationalItems,
@@ -96,6 +101,16 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
           { id: 'teams', label: 'إدارة المستخدمين', icon: 'groups' },
           { id: 'assets', label: 'إدارة الأصول', icon: 'inventory' },
           { id: 'tickets', label: 'الدعم الفني', icon: 'confirmation_number' },
+          {
+            id: 'financial-management',
+            label: 'الادارة المالية',
+            icon: 'account_balance',
+            children: [
+              { id: 'collections', label: 'التحصيلات', icon: 'payments' },
+              { id: 'payables', label: 'المدفوعات', icon: 'account_balance_wallet' },
+              { id: 'journal-entries', label: 'القيود المحاسبية', icon: 'book' },
+            ],
+          },
         ];
       default:
         return [];
@@ -105,6 +120,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
   const roleLabel = {
     'super_admin': 'مدير النظام (Super)',
     'power_admin': 'مدير تنفيذي (Power)',
+    'admin': 'مدير',
     'project_manager': 'مدير المشروع',
     'supervisor': 'مشرف فريق',
     'it_specialist': 'رئيس الدعم الفني',
