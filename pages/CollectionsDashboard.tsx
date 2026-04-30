@@ -237,7 +237,7 @@ const totalCreditNotes = (inv: Invoice) =>
   (inv.creditNotes ?? []).reduce((s, c) => s + c.amount, 0);
 
 const effectiveTotal = (inv: Invoice) =>
-  inv.total - totalCreditNotes(inv);
+  inv.total - (inv.withholdingTax || 0) - totalCreditNotes(inv);
 
 const balance = (inv: Invoice) => effectiveTotal(inv) - totalPaid(inv);
 
