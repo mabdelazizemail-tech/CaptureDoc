@@ -256,7 +256,8 @@ const paidInEgp = (inv: Invoice): number => {
 // manually disputed, or is still within the 1-month window.
 const effectiveCollectionStatus = (inv: Invoice): CollectionStatus => {
   const paid = totalPaid(inv);
-  if (paid >= inv.total && inv.total > 0) return 'Paid';
+  const effTotal = effectiveTotal(inv);
+  if (paid >= effTotal && effTotal > 0) return 'Paid';
   if (paid > 0) return 'Partially Paid';
   if (inv.collectionStatus === 'Disputed') return 'Disputed';
   if (!inv.invoiceDate) return inv.collectionStatus;
