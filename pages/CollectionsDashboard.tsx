@@ -255,9 +255,7 @@ const paidInEgp = (inv: Invoice): number => {
 // is considered مستحق (Due), unless it's already been fully or partially paid,
 // manually disputed, or is still within the 1-month window.
 const effectiveCollectionStatus = (inv: Invoice): CollectionStatus => {
-  const paid = totalPaid(inv);
-  const effTotal = effectiveTotal(inv);
-  if (paid >= effTotal && effTotal > 0) return 'Paid';
+  if (inv.payments.length > 0) return 'Paid';
   return 'Overdue';
 };
 
