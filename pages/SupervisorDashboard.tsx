@@ -1,12 +1,15 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { User, Operator, KPILog, UnlockRequest, Asset, Ticket } from '../services/types';
 import { StorageService } from '../services/storage';
 import { supabase } from '../services/supabaseClient';
 import KPISlider from '../components/KPISlider';
 import Toast from '../components/Toast';
 
-const SupervisorDashboard: React.FC<{ user: User, activeTab: string }> = ({ user, activeTab }) => {
+const SupervisorDashboard: React.FC<{ user: User }> = ({ user }) => {
+    const location = useLocation();
+    const activeTab = location.pathname.slice(1);
     const [operators, setOperators] = useState<Operator[]>([]);
     const [logs, setLogs] = useState<KPILog[]>([]);
     const [monthlyLogs, setMonthlyLogs] = useState<KPILog[]>([]);

@@ -68,6 +68,8 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
     const [toolsItems, setToolsItems] = useState<{ qty: number; desc: string }[]>([{ qty: 1, desc: '' }]);
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [editFiles, setEditFiles] = useState<File[]>([]);
+    const [showReports, setShowReports] = useState(false);
+    const [reportYear, setReportYear] = useState(new Date().getFullYear());
 
     // Metrics for Admin
     const [metrics, setMetrics] = useState({
@@ -750,6 +752,218 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
         );
     };
 
+    const renderReports = () => {
+        const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+
+        const yearTickets = tickets.filter(t => {
+            const d = new Date(t.createdAt);
+            return d.getFullYear() === reportYear;
+        });
+
+        const projectMap = new Map<string, { name: string; monthly: number[]; totalTickets: number[] }>();
+        yearTickets.forEach(t => {
+            const pid = t.projectId || 'unknown';
+            const pname = t.projectName || 'غير محدد';
+            if (!projectMap.has(pid)) {
+                projectMap.set(pid, { name: pname, monthly: new Array(12).fill(0), totalTickets: new Array(12).fill(0) });
+            }
+            const entry = projectMap.get(pid)!;
+            const month = new Date(t.createdAt).getMonth();
+            entry.monthly[month] += (t.cost || 0);
+            entry.totalTickets[month] += 1;
+        });
+
+        const projects = Array.from(projectMap.entries()).sort((a, b) => {
+            const totalA = a[1].monthly.reduce((s, v) => s + v, 0);
+            const totalB = b[1].monthly.reduce((s, v) => s + v, 0);
+            return totalB - totalA;
+        });
+
+        const monthTotals = new Array(12).fill(0);
+        const monthTicketTotals = new Array(12).fill(0);
+        projects.forEach(([, data]) => {
+            data.monthly.forEach((v, i) => { monthTotals[i] += v; });
+            data.totalTickets.forEach((v, i) => { monthTicketTotals[i] += v; });
+        });
+        const grandTotal = monthTotals.reduce((s, v) => s + v, 0);
+
+        const categoryBreakdown = new Map<string, number>();
+        yearTickets.forEach(t => {
+            const cat = t.category || 'other';
+            categoryBreakdown.set(cat, (categoryBreakdown.get(cat) || 0) + (t.cost || 0));
+        });
+        const categoryLabels: Record<string, string> = {
+            hardware: 'أجهزة', software: 'برمجيات', network: 'شبكات',
+            facility: 'مرافق', tools: 'أدوات ومستلزمات', scanner: 'ماسحات', other: 'أخرى'
+        };
+        const categories = Array.from(categoryBreakdown.entries()).sort((a, b) => b[1] - a[1]);
+
+        const availableYears: number[] = [];
+        const allYears = new Set<number>(tickets.map(t => new Date(t.createdAt).getFullYear()));
+        allYears.add(new Date().getFullYear());
+        Array.from(allYears).sort((a, b) => b - a).forEach(y => availableYears.push(y));
+
+        const exportReport = () => {
+            const wsData: (string | number)[][] = [];
+            wsData.push([`تقرير تكاليف الدعم الفني - ${reportYear}`]);
+            wsData.push([]);
+            wsData.push(['المشروع', ...months, 'الإجمالي']);
+            projects.forEach(([, data]) => {
+                const total = data.monthly.reduce((s, v) => s + v, 0);
+                wsData.push([data.name, ...data.monthly, total]);
+            });
+            wsData.push(['الإجمالي', ...monthTotals, grandTotal]);
+            wsData.push([]);
+            wsData.push(['عدد التذاكر لكل مشروع/شهر']);
+            wsData.push(['المشروع', ...months, 'الإجمالي']);
+            projects.forEach(([, data]) => {
+                const total = data.totalTickets.reduce((s, v) => s + v, 0);
+                wsData.push([data.name, ...data.totalTickets, total]);
+            });
+            wsData.push(['الإجمالي', ...monthTicketTotals, monthTicketTotals.reduce((s, v) => s + v, 0)]);
+            wsData.push([]);
+            wsData.push(['تكلفة حسب الفئة']);
+            categories.forEach(([cat, cost]) => {
+                wsData.push([categoryLabels[cat] || cat, cost]);
+            });
+
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            ws['!cols'] = [{ wch: 25 }, ...months.map(() => ({ wch: 12 })), { wch: 14 }];
+            XLSX.utils.book_append_sheet(wb, ws, 'تقرير الدعم');
+            XLSX.writeFile(wb, `Support_Report_${reportYear}.xlsx`);
+        };
+
+        const maxCost = Math.max(...categories.map(([, v]) => v), 1);
+
+        return (
+            <div className="space-y-6 mt-8 animate-fade-in-up">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 className="text-2xl font-bold text-gray-800">تقارير تكاليف الدعم الفني</h2>
+                        <p className="text-sm text-gray-500">تحليل تفصيلي لتكاليف الدعم حسب المشروع والشهر</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <select
+                            value={reportYear}
+                            onChange={e => setReportYear(Number(e.target.value))}
+                            className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-gray-700 outline-none"
+                        >
+                            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                        <button
+                            onClick={exportReport}
+                            className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 flex items-center gap-1.5 shadow-sm"
+                        >
+                            <span className="material-icons text-sm">download</span>
+                            تصدير Excel
+                        </button>
+                    </div>
+                </div>
+
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                        <div className="text-gray-500 text-xs font-bold uppercase">إجمالي تكلفة {reportYear}</div>
+                        <div className="text-2xl font-bold text-orange-600 mt-1">{grandTotal.toLocaleString('en-US')} <span className="text-sm text-orange-400">EGP</span></div>
+                    </div>
+                    <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                        <div className="text-gray-500 text-xs font-bold uppercase">عدد المشاريع</div>
+                        <div className="text-2xl font-bold text-blue-600 mt-1">{projects.length}</div>
+                    </div>
+                    <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                        <div className="text-gray-500 text-xs font-bold uppercase">إجمالي التذاكر في {reportYear}</div>
+                        <div className="text-2xl font-bold text-gray-800 mt-1">{yearTickets.length}</div>
+                    </div>
+                </div>
+
+                {/* Cost per Project per Month Table */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="p-4 bg-gray-50 border-b flex items-center gap-2">
+                        <span className="material-icons text-gray-500">table_chart</span>
+                        <span className="font-bold text-gray-700">تكلفة الدعم لكل مشروع / شهر (EGP)</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="bg-gray-50">
+                                    <th className="text-right px-4 py-3 font-bold text-gray-600 sticky right-0 bg-gray-50 z-10 min-w-[180px]">المشروع</th>
+                                    {months.map((m, i) => <th key={i} className="px-3 py-3 font-bold text-gray-500 text-center whitespace-nowrap min-w-[80px]">{m}</th>)}
+                                    <th className="px-4 py-3 font-bold text-gray-800 text-center bg-orange-50 min-w-[100px]">الإجمالي</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {projects.map(([pid, data]) => {
+                                    const rowTotal = data.monthly.reduce((s, v) => s + v, 0);
+                                    return (
+                                        <tr key={pid} className="border-t border-gray-50 hover:bg-blue-50/30 transition-colors">
+                                            <td className="px-4 py-3 font-bold text-gray-800 sticky right-0 bg-white z-10">{data.name}</td>
+                                            {data.monthly.map((v, i) => (
+                                                <td key={i} className="px-3 py-3 text-center tabular-nums">
+                                                    {v > 0 ? (
+                                                        <div>
+                                                            <div className="font-medium text-gray-700">{v.toLocaleString('en-US')}</div>
+                                                            <div className="text-[10px] text-gray-400">{data.totalTickets[i]} تذكرة</div>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-gray-200">-</span>
+                                                    )}
+                                                </td>
+                                            ))}
+                                            <td className="px-4 py-3 text-center font-bold text-orange-700 bg-orange-50/50">{rowTotal.toLocaleString('en-US')}</td>
+                                        </tr>
+                                    );
+                                })}
+                                {projects.length === 0 && (
+                                    <tr><td colSpan={14} className="text-center py-10 text-gray-400">لا توجد بيانات لعرضها في {reportYear}</td></tr>
+                                )}
+                            </tbody>
+                            {projects.length > 0 && (
+                                <tfoot>
+                                    <tr className="border-t-2 border-gray-200 bg-gray-50 font-bold">
+                                        <td className="px-4 py-3 text-gray-800 sticky right-0 bg-gray-50 z-10">الإجمالي</td>
+                                        {monthTotals.map((v, i) => (
+                                            <td key={i} className="px-3 py-3 text-center text-gray-700 tabular-nums">{v > 0 ? v.toLocaleString('en-US') : '-'}</td>
+                                        ))}
+                                        <td className="px-4 py-3 text-center text-orange-700 bg-orange-100/50">{grandTotal.toLocaleString('en-US')}</td>
+                                    </tr>
+                                </tfoot>
+                            )}
+                        </table>
+                    </div>
+                </div>
+
+                {/* Category Breakdown */}
+                {categories.length > 0 && (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                        <h3 className="font-bold text-gray-700 mb-4 flex items-center gap-2">
+                            <span className="material-icons text-gray-500">pie_chart</span>
+                            توزيع التكاليف حسب الفئة
+                        </h3>
+                        <div className="space-y-3">
+                            {categories.map(([cat, cost]) => (
+                                <div key={cat} className="flex items-center gap-3">
+                                    <div className="w-28 text-sm font-medium text-gray-600 text-right">{categoryLabels[cat] || cat}</div>
+                                    <div className="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden">
+                                        <div
+                                            className="bg-gradient-to-l from-blue-500 to-blue-400 h-full rounded-full flex items-center justify-end px-2 transition-all duration-500"
+                                            style={{ width: `${Math.max((cost / maxCost) * 100, 8)}%` }}
+                                        >
+                                            <span className="text-[10px] font-bold text-white whitespace-nowrap">{cost.toLocaleString('en-US')} EGP</span>
+                                        </div>
+                                    </div>
+                                    <div className="w-12 text-xs text-gray-400 text-left">
+                                        {grandTotal > 0 ? `${((cost / grandTotal) * 100).toFixed(0)}%` : '0%'}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     return (
         <div className="max-w-6xl mx-auto">
             {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
@@ -764,6 +978,20 @@ const TicketSystem: React.FC<TicketSystemProps> = ({ user }) => {
 
             {(user.role === 'supervisor' || user.role === 'project_manager') && renderCreatorView()}
             {(user.role === 'it_specialist' || user.role === 'hr_admin' || isSuperAdmin) && renderSupportDashboard()}
+
+            {(user.role === 'it_specialist' || user.role === 'hr_admin' || isSuperAdmin) && (
+                <div className="mt-6">
+                    <button
+                        onClick={() => setShowReports(!showReports)}
+                        className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all shadow-sm ${showReports ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'}`}
+                    >
+                        <span className="material-icons text-sm">{showReports ? 'close' : 'assessment'}</span>
+                        {showReports ? 'إغلاق التقارير' : 'تقارير تكاليف الدعم'}
+                    </button>
+                </div>
+            )}
+            {showReports && (user.role === 'it_specialist' || user.role === 'hr_admin' || isSuperAdmin) && renderReports()}
+
             {renderDetailedLog()}
 
             {/* Create Ticket Modal */}

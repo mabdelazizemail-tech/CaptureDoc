@@ -572,15 +572,15 @@ const JournalEntriesDashboard: React.FC<Props> = ({ user }) => {
 
   // ── Persistence (load from Supabase on mount, fall back to mock) ──
   useEffect(() => {
-    loadJournalEntries<JournalEntry>()
-      .then(data => { if (data.length > 0) setEntries(data); })
+    loadJournalEntries()
+      .then(data => { if (data.length > 0) setEntries(data as JournalEntry[]); })
       .catch(() => { /* stay with mock data */ });
   }, []);
 
   const persist = useCallback(async (updated: JournalEntry[]) => {
     setEntries(updated);
     try {
-      await Promise.all(updated.map(e => upsertJournalEntry(e as unknown as { id: string })));
+      await Promise.all(updated.map(e => upsertJournalEntry(e)));
     } catch { /* local state still updated */ }
   }, []);
 

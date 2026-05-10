@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { User, Operator, KPILog, Project, Role, UnlockRequest, SiteSummary, Asset, MaintenanceRequest, Ticket } from '../services/types';
 import { StorageService } from '../services/storage';
 import { supabase } from '../services/supabaseClient';
@@ -10,9 +11,7 @@ import ConfirmationModal from '../components/ConfirmationModal';
 declare const Chart: any;
 
 interface AdminDashboardProps {
-    activeTab: string;
     currentUser: User;
-    onNavigate: (tab: string) => void;
     onlineUsers: Set<string>;
 }
 
@@ -23,7 +22,10 @@ const ALL_PROJECTS_OPTION: Project = {
     createdAt: new Date().toISOString()
 };
 
-const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser, onNavigate, onlineUsers }) => {
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, onlineUsers }) => {
+    const location = useLocation();
+    const navigate = useNavigate();
+    const activeTab = location.pathname.slice(1); // '/reports' → 'reports'
     // Global State
     const [projects, setProjects] = useState<Project[]>([]);
     const [currentProject, setCurrentProject] = useState<Project | null>(null);
@@ -449,7 +451,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
     // --- Handlers ---
     const handleSiteSelect = (summary: SiteSummary) => {
         const proj = projects.find(p => p.id === summary.projectId);
-        if (proj) { setCurrentProject(proj); onNavigate('dashboard'); }
+        if (proj) { setCurrentProject(proj); navigate('/dashboard'); }
     };
 
     const handleReviewLog = async (logId: string, status: 'approved' | 'rejected') => {
@@ -974,7 +976,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
                 <div className="flex items-center gap-4 w-full md:w-auto">
                     {currentUser.role === 'project_manager' && (
                         <button
-                            onClick={() => { setCurrentProject(null); onNavigate('sites'); }}
+                            onClick={() => { setCurrentProject(null); navigate('/sites'); }}
                             className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
                             title="العودة للمواقع"
                         >
@@ -990,7 +992,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
 
                     <div className="relative flex gap-2">
                         {pendingReviewCount > 0 && (
-                            <button onClick={() => onNavigate('approvals')} className="p-2 rounded-full bg-orange-50 text-orange-600 hover:bg-orange-100 relative">
+                            <button onClick={() => navigate('/approvals')} className="p-2 rounded-full bg-orange-50 text-orange-600 hover:bg-orange-100 relative">
                                 <span className="material-icons text-2xl">fact_check</span>
                                 <span className="absolute top-1 right-1 w-5 h-5 bg-orange-500 text-white text-xs font-bold rounded-full flex items-center justify-center border-2 border-white animate-pulse">{pendingReviewCount}</span>
                             </button>
@@ -1113,7 +1115,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab, currentUser,
                                                 <div className="flex justify-between items-center mt-2">
                                                     <div className="text-[10px] text-gray-400">بواسطة: {req.creatorName}</div>
                                                     <button
-                                                        onClick={() => { setIsNotificationsOpen(false); onNavigate('tickets'); }}
+                                                        onClick={() => { setIsNotificationsOpen(false); navigate('/tickets'); }}
                                                         className="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded hover:bg-blue-100 font-bold"
                                                     >
                                                         التفاصيل

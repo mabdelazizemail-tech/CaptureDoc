@@ -182,7 +182,7 @@ export async function autoPostInvoiceIssuance(inv: AutoPostInvoice): Promise<voi
     lines,
   });
 
-  await upsertJournalEntry(entry as unknown as { id: string });
+  await upsertJournalEntry(entry);
 }
 
 // ─── 2. Customer Payment Received ────────────────────────────────────────────
@@ -225,7 +225,7 @@ export async function autoPostPaymentReceived(
     ],
   });
 
-  await upsertJournalEntry(entry as unknown as { id: string });
+  await upsertJournalEntry(entry);
 }
 
 // ─── 3. Sales Credit Note ─────────────────────────────────────────────────────
@@ -282,7 +282,7 @@ export async function autoPostCreditNote(
     lines,
   });
 
-  await upsertJournalEntry(entry as unknown as { id: string });
+  await upsertJournalEntry(entry);
 }
 
 // ─── 4. Supplier Invoice Approved/Posted ─────────────────────────────────────
@@ -343,7 +343,7 @@ export async function autoPostSupplierInvoice(inv: AutoPostSupplierInvoice): Pro
     lines,
   });
 
-  await upsertJournalEntry(entry as unknown as { id: string });
+  await upsertJournalEntry(entry);
 }
 
 // ─── 5. Supplier Payment Made ─────────────────────────────────────────────────
@@ -386,5 +386,5 @@ export async function autoPostSupplierPayment(
     ],
   });
 
-  await upsertJournalEntry(entry as unknown as { id: string });
+  await upsertJournalEntry(entry);
 }

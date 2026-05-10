@@ -1,10 +1,9 @@
 import React, { useMemo, useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { User, Role } from '../services/types';
 
 interface SidebarProps {
   user: User;
-  activePage: string;
-  onNavigate: (page: string) => void;
   onLogout: () => void;
   isOpen: boolean;
   toggleSidebar: () => void;
@@ -17,8 +16,9 @@ interface MenuItem {
   children?: MenuItem[];
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogout, isOpen, toggleSidebar }) => {
+const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isOpen, toggleSidebar }) => {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const location = useLocation();
 
   const toggleExpand = (id: string) => {
     setExpandedItems(prev => {
@@ -52,7 +52,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
       { id: 'structure', label: 'الهيكل التنظيمي', icon: 'account_tree' },
       { id: 'teams', label: 'قائمة المستخدمين', icon: 'groups' },
       { id: 'assets', label: 'الأصول', icon: 'precision_manufacturing' },
-      { id: 'tickets', label: 'الدعم الفني', icon: 'confirmation_number' }, // Added Ticket System
+      { id: 'tickets', label: 'الدعم الفني', icon: 'confirmation_number' },
     ];
 
     switch (user.role) {
@@ -86,7 +86,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
           { id: 'dashboard', label: 'فريقي', icon: 'people' },
           { id: 'kpi', label: 'التقييم', icon: 'assignment' },
           { id: 'assets', label: 'الأصول', icon: 'precision_manufacturing' },
-          { id: 'tickets', label: 'الدعم الفني', icon: 'confirmation_number' }, // Added Ticket System
+          { id: 'tickets', label: 'الدعم الفني', icon: 'confirmation_number' },
         ];
       case 'it_specialist':
         return [
@@ -127,9 +127,10 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
     'hr_admin': 'مسؤول الموارد البشرية'
   }[user.role] || 'مستخدم';
 
+  const currentPath = location.pathname;
+
   return (
     <>
-      {/* Mobile Overlay */}
       {isOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden"
@@ -137,7 +138,6 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
         />
       )}
 
-      {/* Sidebar Container */}
       <aside
         className={`
           fixed top-0 right-0 h-full w-64 bg-[#232b3e] text-gray-300 z-30 transition-transform duration-300 ease-in-out flex flex-col
@@ -169,58 +169,74 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, onNavigate, onLogou
           {menuItems.map((item) => {
             const hasChildren = !!item.children?.length;
             const isExpanded = expandedItems.has(item.id);
-            const isParentActive = hasChildren && item.children!.some(c => c.id === activePage);
+            const isParentActive = hasChildren && item.children!.some(c => currentPath === `/${c.id}`);
 
-            return (
-              <div key={item.id}>
-                <button
-                  onClick={() => {
-                    if (hasChildren) {
-                      toggleExpand(item.id);
-                    } else {
-                      onNavigate(item.id);
-                      if (window.innerWidth < 768) toggleSidebar();
-                    }
-                  }}
-                  className={`
-                    w-full flex items-center space-x-reverse space-x-3 px-4 py-3 rounded-md transition-all duration-200
-                    ${activePage === item.id || isParentActive
-                      ? 'bg-primary text-white shadow-lg shadow-blue-900/50 font-bold'
-                      : 'hover:bg-[#2d3648] hover:text-white text-gray-400'}
-                  `}
-                >
-                  <span className={`material-icons ${activePage === item.id || isParentActive ? 'text-white' : 'text-gray-500'}`}>{item.icon}</span>
-                  <span className="flex-1 text-right">{item.label}</span>
-                  {hasChildren && (
-                    <span className={`material-icons text-base transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''} ${activePage === item.id || isParentActive ? 'text-white' : 'text-gray-500'}`}>
+            if (hasChildren) {
+              return (
+                <div key={item.id}>
+                  <button
+                    onClick={() => toggleExpand(item.id)}
+                    className={`
+                      w-full flex items-center space-x-reverse space-x-3 px-4 py-3 rounded-md transition-all duration-200
+                      ${isParentActive
+                        ? 'bg-primary text-white shadow-lg shadow-blue-900/50 font-bold'
+                        : 'hover:bg-[#2d3648] hover:text-white text-gray-400'}
+                    `}
+                  >
+                    <span className={`material-icons ${isParentActive ? 'text-white' : 'text-gray-500'}`}>{item.icon}</span>
+                    <span className="flex-1 text-right">{item.label}</span>
+                    <span className={`material-icons text-base transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''} ${isParentActive ? 'text-white' : 'text-gray-500'}`}>
                       chevron_left
                     </span>
-                  )}
-                </button>
+                  </button>
 
-                {hasChildren && isExpanded && (
-                  <div className="mt-1 mb-1 mr-3 space-y-1 border-r border-gray-700 pr-2">
-                    {item.children!.map((child) => (
-                      <button
-                        key={child.id}
-                        onClick={() => {
-                          onNavigate(child.id);
-                          if (window.innerWidth < 768) toggleSidebar();
-                        }}
-                        className={`
-                          w-full flex items-center space-x-reverse space-x-3 px-3 py-2.5 rounded-md transition-all duration-200
-                          ${activePage === child.id
-                            ? 'bg-primary/80 text-white font-bold'
-                            : 'hover:bg-[#2d3648] hover:text-white text-gray-400'}
-                        `}
-                      >
-                        <span className={`material-icons text-sm ${activePage === child.id ? 'text-white' : 'text-gray-500'}`}>{child.icon}</span>
-                        <span className="text-sm">{child.label}</span>
-                      </button>
-                    ))}
-                  </div>
+                  {isExpanded && (
+                    <div className="mt-1 mb-1 mr-3 space-y-1 border-r border-gray-700 pr-2">
+                      {item.children!.map((child) => (
+                        <NavLink
+                          key={child.id}
+                          to={`/${child.id}`}
+                          onClick={() => { if (window.innerWidth < 768) toggleSidebar(); }}
+                          className={({ isActive }) => `
+                            w-full flex items-center space-x-reverse space-x-3 px-3 py-2.5 rounded-md transition-all duration-200
+                            ${isActive
+                              ? 'bg-primary/80 text-white font-bold'
+                              : 'hover:bg-[#2d3648] hover:text-white text-gray-400'}
+                          `}
+                        >
+                          {({ isActive }) => (
+                            <>
+                              <span className={`material-icons text-sm ${isActive ? 'text-white' : 'text-gray-500'}`}>{child.icon}</span>
+                              <span className="text-sm">{child.label}</span>
+                            </>
+                          )}
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            return (
+              <NavLink
+                key={item.id}
+                to={`/${item.id}`}
+                onClick={() => { if (window.innerWidth < 768) toggleSidebar(); }}
+                className={({ isActive }) => `
+                  w-full flex items-center space-x-reverse space-x-3 px-4 py-3 rounded-md transition-all duration-200
+                  ${isActive
+                    ? 'bg-primary text-white shadow-lg shadow-blue-900/50 font-bold'
+                    : 'hover:bg-[#2d3648] hover:text-white text-gray-400'}
+                `}
+              >
+                {({ isActive }) => (
+                  <>
+                    <span className={`material-icons ${isActive ? 'text-white' : 'text-gray-500'}`}>{item.icon}</span>
+                    <span className="flex-1 text-right">{item.label}</span>
+                  </>
                 )}
-              </div>
+              </NavLink>
             );
           })}
         </nav>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import Login from './pages/Login';
 import AdminDashboard from './pages/AdminDashboard';
 import SupervisorDashboard from './pages/SupervisorDashboard';
@@ -13,38 +14,159 @@ import PayablesDashboard from './pages/PayablesDashboard';
 import JournalEntriesDashboard from './pages/JournalEntriesDashboard';
 import Sidebar from './components/Sidebar';
 import { User } from './services/types';
-import { StorageService } from './services/storage';
 import { supabase } from './services/supabaseClient';
 
 const FINANCE_ONLY_USERS = ['taher.mohamed@pbkadvisory.com'];
 const isFinanceOnly = (u: User | null) =>
   !!u && FINANCE_ONLY_USERS.includes((u.username || '').toLowerCase());
 
-const App: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [activePage, setActivePage] = useState('reports');
+const PAGE_TITLES: Record<string, string> = {
+  '/dashboard': 'لوحة التحكم',
+  '/reports': 'التحليلات والتقارير',
+  '/requests': 'الطلبات والإشعارات',
+  '/teams': 'إدارة الفرق',
+  '/operators': 'إدارة الموظفين',
+  '/upload': 'استيراد بيانات',
+  '/kpi': 'تقييم الأداء اليومي',
+  '/project-management': 'إدارة المشاريع (Project Management)',
+  '/structure': 'الهيكل التنظيمي',
+  '/approvals': 'المراجعات',
+  '/history': 'سجل التقييمات',
+  '/sites': 'نظرة عامة للمواقع',
+  '/assets': 'إدارة الأصول والصيانة',
+  '/tickets': 'نظام التذاكر والدعم الفني',
+  '/hr': 'إدارة الموارد البشرية (HR)',
+  '/collections': 'التحصيلات',
+  '/payables': 'المدفوعات — إدارة حسابات الموردين',
+  '/journal-entries': 'القيود المحاسبية — دفتر اليومية العام',
+};
+
+function getDefaultRoute(user: User): string {
+  if (FINANCE_ONLY_USERS.includes((user.username || '').toLowerCase())) return '/collections';
+  if (user.role === 'it_specialist') return '/assets';
+  if (user.role === 'hr_admin') return '/hr';
+  const isAdmin = user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'project_manager';
+  return isAdmin ? '/reports' : '/dashboard';
+}
+
+const AppShell: React.FC<{
+  user: User;
+  onlineUsers: Set<string>;
+  onLogout: () => void;
+}> = ({ user, onlineUsers, onLogout }) => {
+  const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Lifted state for online users presence
+  const pathname = location.pathname;
+  const pageTitle = PAGE_TITLES[pathname];
+  const isHiddenPage = pathname === '/health-check' || pathname === '/debug';
+  const isAdmin = user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'project_manager' || user.role === 'hr_admin';
+  const finOnly = isFinanceOnly(user);
+
+  const adminDashEl = <AdminDashboard currentUser={user} onlineUsers={onlineUsers} />;
+
+  return (
+    <div className="flex h-screen bg-background overflow-hidden">
+      <Sidebar
+        user={user}
+        onLogout={onLogout}
+        isOpen={isSidebarOpen}
+        toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+      />
+
+      <div className="flex-1 flex flex-col h-full overflow-hidden w-full relative">
+        <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between md:hidden z-10 sticky top-0">
+          <div className="flex flex-col">
+            <h1 className="text-xl font-bold text-primary">Capture Flow</h1>
+            <span className="text-[10px] text-gray-500 font-bold">(Powered by Capture Doc)</span>
+          </div>
+          <button
+            onClick={() => setIsSidebarOpen(true)}
+            className="p-2 -ml-2 rounded-lg hover:bg-gray-100 text-gray-600 active:bg-gray-200 transition-colors"
+            aria-label="Open menu"
+          >
+            <span className="material-icons text-2xl">menu</span>
+          </button>
+        </header>
+
+        <main className="flex-1 overflow-y-auto bg-[#f0f3f6]">
+          <div className="max-w-7xl mx-auto p-4 md:p-8 pb-20 md:pb-8">
+            {!isHiddenPage && pageTitle && (
+              <div className="flex items-center justify-between mb-6 md:mb-8">
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-800">{pageTitle}</h1>
+                  <p className="text-gray-500 text-sm mt-1">
+                    {new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <Routes>
+              {/* Admin sub-views rendered by AdminDashboard */}
+              <Route path="/dashboard" element={
+                finOnly ? <CollectionsDashboard user={user} /> :
+                isAdmin ? adminDashEl :
+                <SupervisorDashboard user={user} />
+              } />
+              <Route path="/reports" element={
+                finOnly ? <CollectionsDashboard user={user} /> :
+                isAdmin ? adminDashEl :
+                <SupervisorDashboard user={user} />
+              } />
+              <Route path="/structure" element={adminDashEl} />
+              <Route path="/teams" element={adminDashEl} />
+              <Route path="/operators" element={adminDashEl} />
+              <Route path="/upload" element={adminDashEl} />
+              <Route path="/approvals" element={adminDashEl} />
+              <Route path="/history" element={adminDashEl} />
+              <Route path="/requests" element={adminDashEl} />
+              <Route path="/sites" element={adminDashEl} />
+
+              {/* Supervisor sub-view */}
+              <Route path="/kpi" element={<SupervisorDashboard user={user} />} />
+
+              {/* Standalone pages */}
+              <Route path="/project-management" element={<ProjectManagementDashboard user={user} />} />
+              <Route path="/pm-dashboard" element={<Navigate to="/project-management" replace />} />
+              <Route path="/assets" element={<AssetDashboard user={user} />} />
+              <Route path="/tickets" element={<TicketSystem user={user} />} />
+              <Route path="/hr" element={<HRDashboard user={user} />} />
+              <Route path="/collections" element={<CollectionsDashboard user={user} />} />
+              <Route path="/payables" element={<PayablesDashboard user={user} />} />
+              <Route path="/journal-entries" element={<JournalEntriesDashboard user={user} />} />
+              <Route path="/health-check" element={<HealthCheck user={user} />} />
+              <Route path="/debug" element={<DatabaseDebugger />} />
+
+              {/* Root and catch-all */}
+              <Route path="*" element={<Navigate to={getDefaultRoute(user)} replace />} />
+            </Routes>
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+};
+
+const App: React.FC = () => {
+  const [user, setUser] = useState<User | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const navigate = useNavigate();
+  const location = useLocation();
 
+  // Redirect to login on logout
   useEffect(() => {
-    // Check for hidden route via query params
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('page') === 'health-check') {
-      setActivePage('health-check');
-    } else if (params.get('page') === 'debug') {
-      setActivePage('debug');
+    if (!user && location.pathname !== '/login') {
+      navigate('/login', { replace: true });
     }
-  }, []);
+  }, [user]);
 
-  // Presence Tracking & Listening (Centralized)
+  // Presence Tracking
   useEffect(() => {
     if (user) {
       const channel = supabase.channel('online-users');
       channel
         .on('presence', { event: 'sync' }, () => {
-          // Synchronize the online users list
           const state = channel.presenceState();
           const onlineIds = new Set<string>();
           Object.values(state).forEach((presences: any) => {
@@ -71,134 +193,19 @@ const App: React.FC = () => {
   }, [user]);
 
   const handleLogin = (loggedInUser: User) => {
-    console.log("App: handleLogin called with user:", loggedInUser);
     setUser(loggedInUser);
-
-    // Check route again on login, or default to role-based view
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('page') === 'health-check') {
-      setActivePage('health-check');
-    } else if (params.get('page') === 'debug') {
-      setActivePage('debug');
-    } else if (isFinanceOnly(loggedInUser)) {
-      setActivePage('collections');
-    } else {
-      if (loggedInUser.role === 'it_specialist') {
-        setActivePage('assets');
-      } else if (loggedInUser.role === 'hr_admin') {
-        setActivePage('hr');
-      } else {
-        const isAdmin = loggedInUser.role === 'super_admin' || loggedInUser.role === 'power_admin' || loggedInUser.role === 'project_manager';
-        setActivePage(isAdmin ? 'reports' : 'dashboard');
-      }
-    }
   };
 
   const handleLogout = () => {
     setUser(null);
-    setActivePage('reports');
-    setOnlineUsers(new Set()); // Clear presence on logout
+    setOnlineUsers(new Set());
   };
 
   if (!user) {
     return <Login onLogin={handleLogin} />;
   }
 
-  const isAdmin = user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'project_manager' || user.role === 'hr_admin';
-
-  return (
-    <div className="flex h-screen bg-background overflow-hidden">
-      <Sidebar
-        user={user}
-        activePage={activePage}
-        onNavigate={setActivePage}
-        onLogout={handleLogout}
-        isOpen={isSidebarOpen}
-        toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-      />
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden w-full relative">
-        {/* Header (Mobile Only) */}
-        <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between md:hidden z-10 sticky top-0">
-          <div className="flex flex-col">
-            <h1 className="text-xl font-bold text-primary">Capture Flow</h1>
-            <span className="text-[10px] text-gray-500 font-bold">(Powered by Capture Doc)</span>
-          </div>
-          <button
-            onClick={() => setIsSidebarOpen(true)}
-            className="p-2 -ml-2 rounded-lg hover:bg-gray-100 text-gray-600 active:bg-gray-200 transition-colors"
-            aria-label="Open menu"
-          >
-            <span className="material-icons text-2xl">menu</span>
-          </button>
-        </header>
-
-        {/* Content Area */}
-        <main className="flex-1 overflow-y-auto bg-[#f0f3f6]">
-          <div className="max-w-7xl mx-auto p-4 md:p-8 pb-20 md:pb-8">
-            {activePage !== 'health-check' && activePage !== 'debug' && (
-              <div className="flex items-center justify-between mb-6 md:mb-8">
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-800">
-                    {activePage === 'dashboard' && 'لوحة التحكم'}
-                    {activePage === 'reports' && 'التحليلات والتقارير'}
-                    {activePage === 'requests' && 'الطلبات والإشعارات'}
-                    {activePage === 'teams' && 'إدارة الفرق'}
-                    {activePage === 'operators' && 'إدارة الموظفين'}
-                    {activePage === 'upload' && 'استيراد بيانات'}
-                    {activePage === 'kpi' && 'تقييم الأداء اليومي'}
-                    {activePage === 'project-management' && 'إدارة المشاريع (Project Management)'}
-                    {activePage === 'structure' && 'الهيكل التنظيمي'}
-                    {activePage === 'approvals' && 'المراجعات'}
-                    {activePage === 'history' && 'سجل التقييمات'}
-                    {activePage === 'sites' && 'نظرة عامة للمواقع'}
-                    {activePage === 'assets' && 'إدارة الأصول والصيانة'}
-                    {activePage === 'tickets' && 'نظام التذاكر والدعم الفني'}
-                    {activePage === 'hr' && 'إدارة الموارد البشرية (HR)'}
-                    {activePage === 'collections' && 'التحصيلات'}
-                    {activePage === 'payables' && 'المدفوعات — إدارة حسابات الموردين'}
-                    {activePage === 'journal-entries' && 'القيود المحاسبية — دفتر اليومية العام'}
-                  </h1>
-                  <p className="text-gray-500 text-sm mt-1">
-                    {new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {isFinanceOnly(user) && activePage === 'payables' ? (
-              <PayablesDashboard user={user} />
-            ) : isFinanceOnly(user) ? (
-              <CollectionsDashboard user={user} />
-            ) : activePage === 'health-check' ? (
-              <HealthCheck user={user} />
-            ) : activePage === 'debug' ? (
-              <DatabaseDebugger />
-            ) : activePage === 'assets' ? (
-              <AssetDashboard user={user} />
-            ) : activePage === 'tickets' ? (
-              <TicketSystem user={user} />
-            ) : activePage === 'hr' ? (
-              <HRDashboard user={user} />
-            ) : activePage === 'collections' ? (
-              <CollectionsDashboard user={user} />
-            ) : activePage === 'payables' ? (
-              <PayablesDashboard user={user} />
-            ) : activePage === 'journal-entries' ? (
-              <JournalEntriesDashboard user={user} />
-            ) : activePage === 'pm-dashboard' || activePage === 'project-management' ? (
-              <ProjectManagementDashboard user={user} />
-            ) : isAdmin ? (
-              <AdminDashboard activeTab={activePage} currentUser={user} onNavigate={setActivePage} onlineUsers={onlineUsers} />
-            ) : (
-              <SupervisorDashboard user={user} activeTab={activePage} />
-            )}
-          </div>
-        </main>
-      </div>
-    </div>
-  );
+  return <AppShell user={user} onlineUsers={onlineUsers} onLogout={handleLogout} />;
 };
 
 export default App;
