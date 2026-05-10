@@ -140,7 +140,7 @@ const SEED: Invoice[] = [
     tax: 4800,
     total: 36800,
     invoiceStatus: 'Sent',
-    collectionStatus: 'Partially Paid',
+    collectionStatus: 'Overdue',
     paymentStatus: 'Partial',
     lastFollowUp: '2025-04-12',
     nextFollowUp: '2025-04-22',
@@ -159,7 +159,7 @@ const SEED: Invoice[] = [
     tax: 2700,
     total: 20700,
     invoiceStatus: 'Approved',
-    collectionStatus: 'Not Due',
+    collectionStatus: 'Overdue',
     paymentStatus: 'Unpaid',
     lastFollowUp: '',
     nextFollowUp: '2025-04-28',
@@ -258,20 +258,7 @@ const effectiveCollectionStatus = (inv: Invoice): CollectionStatus => {
   const paid = totalPaid(inv);
   const effTotal = effectiveTotal(inv);
   if (paid >= effTotal && effTotal > 0) return 'Paid';
-  if (paid > 0) return 'Partially Paid';
-  if (inv.collectionStatus === 'Disputed') return 'Disputed';
-  if (!inv.invoiceDate) return inv.collectionStatus;
-  const now = new Date();
-  const dueFrom = new Date(inv.invoiceDate);
-  dueFrom.setMonth(dueFrom.getMonth() + 1);
-  // Overdue once the dueDate passes, or 2 months after invoiceDate if no dueDate.
-  const overdueFrom = inv.dueDate ? new Date(inv.dueDate) : (() => {
-    const d = new Date(inv.invoiceDate);
-    d.setMonth(d.getMonth() + 2);
-    return d;
-  })();
-  if (now > overdueFrom) return 'Overdue';
-  return now >= dueFrom ? 'Due' : 'Not Due';
+  return 'Overdue';
 };
 
 // ─── Sort Utilities ──────────────────────────────────────────────────────────
@@ -340,8 +327,13 @@ const DashboardScreen: React.FC<{
       else if (sortCol === 'customer') v = cmp(a.customer, b.customer);
       else if (sortCol === 'projectName') v = cmp(a.projectName, b.projectName);
       else if (sortCol === 'dueDate') v = cmp(a.dueDate, b.dueDate);
-      else if (sortCol === 'balance') v = cmp(balanceInEgp(a), balanceInEgp(b));
-      else if (sortCol === 'lastFollowUp') v = cmp(a.lastFollowUp, b.lastFollowUp);
+      else if (sortCol === 'invoiceDate') v = cmp(a.invoiceDate, b.invoiceDate);
+      else if (sortCol === 'total') v = cmp(totalInEgp(a), totalInEgp(b));
+      else if (sortCol === 'paymentDate') {
+        const pa = a.payments.length > 0 ? a.payments.sort((x, y) => y.receiptDate.localeCompare(x.receiptDate))[0].receiptDate : '';
+        const pb = b.payments.length > 0 ? b.payments.sort((x, y) => y.receiptDate.localeCompare(x.receiptDate))[0].receiptDate : '';
+        v = cmp(pa, pb);
+      }
       return applySortDir(v, sortDirD);
     });
   }, [invoices, sortCol, sortDirD]);
@@ -349,7 +341,7 @@ const DashboardScreen: React.FC<{
   const sent = invoices.filter(i => i.invoiceStatus === 'Sent');
   const totalSentEgp = sent.reduce((s, i) => s + totalInEgp(i), 0);
   const totalDue = invoices
-    .filter(i => { const s = effectiveCollectionStatus(i); return s === 'Due' || s === 'Overdue'; })
+    .filter(i => effectiveCollectionStatus(i) === 'Overdue')
     .reduce((s, i) => s + balance(i), 0);
   const totalOverdue = invoices
     .filter(i => effectiveCollectionStatus(i) === 'Overdue')
@@ -401,10 +393,7 @@ const DashboardScreen: React.FC<{
           {/* Legend */}
           <div className="mr-auto flex items-center gap-4 text-xs text-gray-400 flex-wrap">
             <span className="flex items-center gap-1"><span className="material-icons text-red-500" style={{fontSize:'16px'}}>cancel</span>متأخر</span>
-            <span className="flex items-center gap-1"><span className="material-icons text-yellow-400" style={{fontSize:'16px'}}>warning</span>مستحق (شهر)</span>
-            <span className="flex items-center gap-1"><span className="material-icons text-orange-400" style={{fontSize:'16px'}}>check_circle</span>جزئي</span>
-            <span className="flex items-center gap-1"><span className="material-icons text-green-400" style={{fontSize:'16px'}}>check_circle</span>محصّل</span>
-            <span className="flex items-center gap-1"><span className="material-icons text-gray-500" style={{fontSize:'16px'}}>radio_button_unchecked</span>لم يحن</span>
+            <span className="flex items-center gap-1"><span className="material-icons text-green-400" style={{fontSize:'16px'}}>check_circle</span>مدفوع</span>
           </div>
         </div>
         {invoices.length === 0 ? (
@@ -417,9 +406,10 @@ const DashboardScreen: React.FC<{
                 <SortTh label="رقم الفاتورة" col="invoiceNo" sortCol={sortCol} sortDir={sortDirD} onSort={handleSortD} />
                 <SortTh label="العميل" col="customer" sortCol={sortCol} sortDir={sortDirD} onSort={handleSortD} />
                 <SortTh label="اسم المشروع" col="projectName" sortCol={sortCol} sortDir={sortDirD} onSort={handleSortD} />
+                <SortTh label="تاريخ الفاتورة" col="invoiceDate" sortCol={sortCol} sortDir={sortDirD} onSort={handleSortD} />
                 <SortTh label="الاستحقاق" col="dueDate" sortCol={sortCol} sortDir={sortDirD} onSort={handleSortD} />
-                <SortTh label="الرصيد" col="balance" sortCol={sortCol} sortDir={sortDirD} onSort={handleSortD} />
-                <SortTh label="آخر متابعة" col="lastFollowUp" sortCol={sortCol} sortDir={sortDirD} onSort={handleSortD} />
+                <SortTh label="الإجمالي" col="total" sortCol={sortCol} sortDir={sortDirD} onSort={handleSortD} />
+                <SortTh label="تاريخ الدفع" col="paymentDate" sortCol={sortCol} sortDir={sortDirD} onSort={handleSortD} />
                 <th className="px-2 py-3"></th>
               </tr>
             </thead>
@@ -428,15 +418,7 @@ const DashboardScreen: React.FC<{
                 const cs = effectiveCollectionStatus(inv);
                 const { dotIcon, dotCls, rowCls } = cs === 'Paid'
                   ? { dotIcon: 'check_circle', dotCls: 'text-green-400', rowCls: '' }
-                  : cs === 'Overdue'
-                  ? { dotIcon: 'cancel', dotCls: 'text-red-500', rowCls: 'bg-red-950/10' }
-                  : cs === 'Due'
-                  ? { dotIcon: 'warning', dotCls: 'text-yellow-400', rowCls: 'bg-yellow-950/10' }
-                  : cs === 'Partially Paid'
-                  ? { dotIcon: 'check_circle', dotCls: 'text-orange-400', rowCls: '' }
-                  : cs === 'Disputed'
-                  ? { dotIcon: 'gavel', dotCls: 'text-purple-400', rowCls: '' }
-                  : { dotIcon: 'radio_button_unchecked', dotCls: 'text-gray-600', rowCls: '' };
+                  : { dotIcon: 'cancel', dotCls: 'text-red-500', rowCls: 'bg-red-950/10' };
                 return (
                   <tr key={inv.id} className={`border-b border-gray-700/50 hover:bg-[#2d3648] transition-colors cursor-pointer ${rowCls}`} onClick={() => onOpen(inv)}>
                     <td className="px-4 py-3 text-center">
@@ -445,15 +427,12 @@ const DashboardScreen: React.FC<{
                     <td className="px-4 py-3 text-white font-mono text-xs">{inv.invoiceNo}</td>
                     <td className="px-4 py-3 text-gray-300">{inv.customer}</td>
                     <td className="px-4 py-3 text-gray-300">{inv.projectName || '—'}</td>
-                    <td className={`px-4 py-3 text-xs font-medium ${cs === 'Overdue' ? 'text-red-400' : cs === 'Due' ? 'text-yellow-400' : 'text-gray-400'}`}>{inv.dueDate}</td>
+                    <td className="px-4 py-3 text-gray-400 text-xs">{inv.invoiceDate || '—'}</td>
+                    <td className={`px-4 py-3 text-xs font-medium ${cs === 'Overdue' ? 'text-red-400' : 'text-gray-400'}`}>{inv.dueDate || '—'}</td>
                     <td className="px-4 py-3 text-white font-semibold">
-                      {cs === 'Paid' ? (
-                        <span className="text-green-400">{fmt(paidInEgp(inv))} EGP</span>
-                      ) : (
-                        <span>{fmt(balanceInEgp(inv))} EGP</span>
-                      )}
+                      {fmt(totalInEgp(inv))} EGP
                     </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{inv.lastFollowUp || '—'}</td>
+                    <td className="px-4 py-3 text-gray-400 text-xs">{inv.payments.length > 0 ? inv.payments.sort((a, b) => b.receiptDate.localeCompare(a.receiptDate))[0].receiptDate : '—'}</td>
                     <td className="px-2 py-3">
                       <span className="material-icons text-gray-500 text-base">open_in_new</span>
                     </td>
@@ -647,11 +626,7 @@ const InvoiceListScreen: React.FC<{
                     const s = effectiveCollectionStatus(inv);
                     const icon =
                       s === 'Paid' ? { icon: 'check_circle', cls: 'text-green-400', label: collectionStatusAr[s] } :
-                      s === 'Overdue' ? { icon: 'cancel', cls: 'text-red-500', label: collectionStatusAr[s] } :
-                      s === 'Due' ? { icon: 'warning', cls: 'text-yellow-400', label: collectionStatusAr[s] } :
-                      s === 'Partially Paid' ? { icon: 'check_circle', cls: 'text-orange-400', label: collectionStatusAr[s] } :
-                      s === 'Disputed' ? { icon: 'gavel', cls: 'text-purple-400', label: collectionStatusAr[s] } :
-                      { icon: 'radio_button_unchecked', cls: 'text-gray-500', label: collectionStatusAr[s] };
+                      { icon: 'cancel', cls: 'text-red-500', label: collectionStatusAr[s] };
                     return (
                       <span className="flex items-center gap-1.5">
                         <span className={`material-icons text-lg ${icon.cls}`} style={{ fontSize: '18px' }}>{icon.icon}</span>
@@ -2010,7 +1985,7 @@ const InvoiceDetailsScreen: React.FC<{
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <Field label="حالة التحصيل">
                   <select value={followUp.collectionStatus} onChange={e => setFollowUp(f => ({ ...f, collectionStatus: e.target.value as CollectionStatus }))} className={inputCls}>
-                    {(Object.keys(collectionStatusAr) as CollectionStatus[]).map(s => (
+                    {(['Overdue', 'Paid'] as CollectionStatus[]).map(s => (
                       <option key={s} value={s}>{collectionStatusAr[s]}</option>
                     ))}
                   </select>
@@ -2263,7 +2238,7 @@ const PaymentEntryScreen: React.FC<{
                     onChange={e => setFollowUp(f => f ? { ...f, collectionStatus: e.target.value as CollectionStatus } : f)}
                     className={inputCls}
                   >
-                    {(Object.keys(collectionStatusAr) as CollectionStatus[]).map(s => (
+                    {(['Overdue', 'Paid'] as CollectionStatus[]).map(s => (
                       <option key={s} value={s}>{collectionStatusAr[s]}</option>
                     ))}
                   </select>
@@ -2501,7 +2476,7 @@ const HistoryScreen: React.FC<{
         </div>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as CollectionStatus | 'All')} className="bg-[#1b2130] border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-primary">
           <option value="All">كل حالات التحصيل</option>
-          {(Object.keys(collectionStatusAr) as CollectionStatus[]).map(s => (
+          {(['Overdue', 'Paid'] as CollectionStatus[]).map(s => (
             <option key={s} value={s}>{collectionStatusAr[s]}</option>
           ))}
         </select>
@@ -2769,7 +2744,7 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
     } else {
       const newInv: Invoice = {
         id: Date.now().toString(),
-        collectionStatus: 'Not Due',
+        collectionStatus: 'Overdue',
         paymentStatus: 'Unpaid',
         lastFollowUp: '',
         nextFollowUp: '',
@@ -2831,7 +2806,7 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
       const totalPaidAmt = payments.reduce((s, p) => s + p.amountReceived, 0);
       const effTotal = inv.total - (inv.withholdingTax || 0) - (inv.creditNotes || []).reduce((s, c) => s + c.amount, 0);
       const paymentStatus: PaymentStatus = totalPaidAmt >= effTotal ? 'Paid' : totalPaidAmt > 0 ? 'Partial' : 'Unpaid';
-      const collectionStatus: CollectionStatus = totalPaidAmt >= effTotal ? 'Paid' : totalPaidAmt > 0 ? 'Partially Paid' : inv.collectionStatus;
+      const collectionStatus: CollectionStatus = totalPaidAmt >= effTotal ? 'Paid' : totalPaidAmt > 0 ? 'Overdue' : inv.collectionStatus;
       const updated = { ...inv, payments, paymentStatus, collectionStatus };
       upsertInvoiceRemote(updated);
       return updated;
@@ -2842,7 +2817,7 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
       const totalPaidAmt = payments.reduce((s, p) => s + p.amountReceived, 0);
       const effTotal = prev.total - (prev.withholdingTax || 0) - (prev.creditNotes || []).reduce((s, c) => s + c.amount, 0);
       const paymentStatus: PaymentStatus = totalPaidAmt >= effTotal ? 'Paid' : totalPaidAmt > 0 ? 'Partial' : 'Unpaid';
-      const collectionStatus: CollectionStatus = totalPaidAmt >= effTotal ? 'Paid' : totalPaidAmt > 0 ? 'Partially Paid' : prev.collectionStatus;
+      const collectionStatus: CollectionStatus = totalPaidAmt >= effTotal ? 'Paid' : totalPaidAmt > 0 ? 'Overdue' : prev.collectionStatus;
       return { ...prev, payments, paymentStatus, collectionStatus };
     });
   };
@@ -2854,7 +2829,7 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
       const totalPaidAmt = payments.reduce((s, p) => s + p.amountReceived, 0);
       const effTotal = inv.total - (inv.withholdingTax || 0) - (inv.creditNotes || []).reduce((s, c) => s + c.amount, 0);
       const paymentStatus: PaymentStatus = totalPaidAmt >= effTotal ? 'Paid' : totalPaidAmt > 0 ? 'Partial' : 'Unpaid';
-      const collectionStatus: CollectionStatus = totalPaidAmt >= effTotal ? 'Paid' : totalPaidAmt > 0 ? 'Partially Paid' : inv.collectionStatus;
+      const collectionStatus: CollectionStatus = totalPaidAmt >= effTotal ? 'Paid' : totalPaidAmt > 0 ? 'Overdue' : inv.collectionStatus;
       const updated = { ...inv, payments, paymentStatus, collectionStatus };
       upsertInvoiceRemote(updated);
       return updated;
@@ -2865,7 +2840,7 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
       const totalPaidAmt = payments.reduce((s, p) => s + p.amountReceived, 0);
       const effTotal = prev.total - (prev.withholdingTax || 0) - (prev.creditNotes || []).reduce((s, c) => s + c.amount, 0);
       const paymentStatus: PaymentStatus = totalPaidAmt >= effTotal ? 'Paid' : totalPaidAmt > 0 ? 'Partial' : 'Unpaid';
-      const collectionStatus: CollectionStatus = totalPaidAmt >= effTotal ? 'Paid' : totalPaidAmt > 0 ? 'Partially Paid' : prev.collectionStatus;
+      const collectionStatus: CollectionStatus = totalPaidAmt >= effTotal ? 'Paid' : totalPaidAmt > 0 ? 'Overdue' : prev.collectionStatus;
       return { ...prev, payments, paymentStatus, collectionStatus };
     });
   };
@@ -2879,7 +2854,7 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
       const paid = payments.reduce((s, p) => s + p.amountReceived, 0);
       const effTotal = inv.total - (inv.withholdingTax || 0) - (inv.creditNotes || []).reduce((s, c) => s + c.amount, 0);
       const paymentStatus: PaymentStatus = paid >= effTotal ? 'Paid' : paid > 0 ? 'Partial' : 'Unpaid';
-      const collectionStatus: CollectionStatus = paid >= effTotal ? 'Paid' : 'Partially Paid';
+      const collectionStatus: CollectionStatus = paid >= effTotal ? 'Paid' : 'Overdue';
       updated = { ...inv, payments, paymentStatus, collectionStatus };
       return updated;
     }));
