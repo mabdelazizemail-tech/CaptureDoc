@@ -745,9 +745,10 @@ const blankInvoice = (): PayableInvoice => ({
 const CreateInvoiceScreen: React.FC<{
   initial: PayableInvoice | null;
   projects: Project[];
+  user: User;
   onSave: (inv: PayableInvoice) => void;
   onCancel: () => void;
-}> = ({ initial, onSave, onCancel, projects }) => {
+}> = ({ initial, onSave, onCancel, projects, user }) => {
   const [form, setForm]   = useState<PayableInvoice>(initial ?? blankInvoice());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pdfParsing, setPdfParsing] = useState(false);
@@ -2206,6 +2207,7 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
         <CreateInvoiceScreen
           initial={editInv}
           projects={projects}
+          user={user}
           onSave={handleSave}
           onCancel={() => setScreen(activeTab)}
         />
