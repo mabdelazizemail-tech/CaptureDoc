@@ -7,6 +7,7 @@ import {
   deletePayables,
 } from '../services/payablesStorage';
 import { parsePayableInvoicePdf, ParsedPayableInvoice } from '../services/invoicePdfParser';
+import { supabase } from '../services/supabaseClient';
 import { autoPostSupplierInvoice, autoPostSupplierPayment } from '../services/journalAutoPost';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -766,20 +767,49 @@ const CreateInvoiceScreen: React.FC<{
   const [etaTotalCount, setEtaTotalCount] = useState(0);
   const [etaDateFrom,   setEtaDateFrom]   = useState(() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); });
   const [etaDateTo,     setEtaDateTo]     = useState(() => new Date().toISOString().slice(0, 10));
-  const [etaClientId,   setEtaClientId]   = useState(() => localStorage.getItem('eta_client_id')   ?? '');
-  const [etaClientSec,  setEtaClientSec]  = useState(() => localStorage.getItem('eta_client_sec')  ?? '');
-  const [etaClientSec2, setEtaClientSec2] = useState(() => localStorage.getItem('eta_client_sec2') ?? '');
+  const [etaClientId,   setEtaClientId]   = useState('');
+  const [etaClientSec,  setEtaClientSec]  = useState('');
+  const [etaClientSec2, setEtaClientSec2] = useState('');
   const [showEtaCreds,  setShowEtaCreds]  = useState(false);
   const [etaImporting,  setEtaImporting]  = useState('');
-  const [etaBulkImporting, setEtaBulkImporting] = useState(false);
-  const [etaSelected, setEtaSelected] = useState<Set<string>>(new Set());
   const [etaPdfLoading, setEtaPdfLoading] = useState('');
   const [etaPdfPreview, setEtaPdfPreview] = useState<{ uuid: string; name: string; url: string } | null>(null);
 
-  const saveEtaCreds = () => {
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('operator_settings')
+          .select('key, value')
+          .eq('operator_id', user.username)
+          .in('key', ['eta_client_id', 'eta_client_sec', 'eta_client_sec2']);
+        if (data && data.length > 0) {
+          const map: Record<string, string> = {};
+          data.forEach((r: any) => { map[r.key] = r.value; });
+          setEtaClientId(map.eta_client_id ?? '');
+          setEtaClientSec(map.eta_client_sec ?? '');
+          setEtaClientSec2(map.eta_client_sec2 ?? '');
+          return;
+        }
+      } catch { /* ignore */ }
+      setEtaClientId(localStorage.getItem('eta_client_id')   ?? '');
+      setEtaClientSec(localStorage.getItem('eta_client_sec')  ?? '');
+      setEtaClientSec2(localStorage.getItem('eta_client_sec2') ?? '');
+    })();
+  }, [user.username]);
+
+  const saveEtaCreds = async () => {
     localStorage.setItem('eta_client_id',   etaClientId);
     localStorage.setItem('eta_client_sec',  etaClientSec);
     localStorage.setItem('eta_client_sec2', etaClientSec2);
+    try {
+      const rows = [
+        { operator_id: user.username, key: 'eta_client_id',   value: etaClientId },
+        { operator_id: user.username, key: 'eta_client_sec',  value: etaClientSec },
+        { operator_id: user.username, key: 'eta_client_sec2', value: etaClientSec2 },
+      ];
+      await supabase.from('operator_settings').upsert(rows, { onConflict: 'operator_id,key' });
+    } catch { /* ignore if table doesn't exist yet */ }
     setShowEtaCreds(false);
   };
 
@@ -809,7 +839,6 @@ const CreateInvoiceScreen: React.FC<{
       const data = await etaFetch(body);
       if (!data.ok) throw new Error(data.error ?? 'خطأ في الاتصال بالبوابة');
       setEtaRows(data.invoices ?? []);
-      setEtaSelected(new Set());
       setEtaNextToken(data.continuationToken ?? '');
       setEtaTotalCount(data.totalCount ?? 0);
       if (resetStack) setEtaTokenStack([]);
@@ -883,68 +912,6 @@ const CreateInvoiceScreen: React.FC<{
       setEtaOpen(false);
     } finally {
       setEtaImporting('');
-    }
-  };
-
-  const importEtaBulk = async () => {
-    if (etaSelected.size === 0) return;
-    setEtaBulkImporting(true);
-    const rows = etaRows.filter(r => etaSelected.has(r.uuid));
-    const addDays30 = (iso: string) => { const d = new Date(iso); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); };
-    for (const row of rows) {
-      try {
-        const [data, pdfData] = await Promise.allSettled([
-          etaFetch({ action: 'get', uuid: row.uuid }),
-          etaFetch({ action: 'pdf', uuid: row.uuid }),
-        ]);
-        const inv = data.status === 'fulfilled' && data.value.ok ? data.value.invoice : null;
-        const pdfBase64: string | null =
-          pdfData.status === 'fulfilled' && pdfData.value.ok ? pdfData.value.pdf : null;
-        const pdfName = `${row.internalId || row.uuid}.pdf`;
-        const newInv: PayableInvoice = {
-          ...blankInvoice(),
-          invoiceNo:   inv?.invoiceNo   || row.internalId      || '',
-          supplier:    inv?.supplier    || row.issuerName       || '',
-          invoiceDate: inv?.invoiceDate || row.dateTimeIssued   || new Date().toISOString().slice(0, 10),
-          dueDate:     inv?.invoiceDate ? addDays30(inv.invoiceDate) : row.dateTimeIssued ? addDays30(row.dateTimeIssued) : '',
-          amount:      inv?.amount > 0  ? inv.amount  : row.netAmount > 0 ? row.netAmount : 0,
-          tax:         inv?.tax    > 0  ? inv.tax     : 0,
-          hasTax:      inv?.tax    > 0,
-          total:       inv?.total  > 0  ? inv.total   : row.total > 0 ? row.total : 0,
-          ...(pdfBase64 ? { pdfData: pdfBase64, pdfName } : {}),
-        };
-        onSave(newInv);
-      } catch {
-        const newInv: PayableInvoice = {
-          ...blankInvoice(),
-          invoiceNo:   row.internalId     || '',
-          supplier:    row.issuerName     || '',
-          invoiceDate: row.dateTimeIssued || new Date().toISOString().slice(0, 10),
-          dueDate:     row.dateTimeIssued ? addDays30(row.dateTimeIssued) : '',
-          amount:      row.netAmount > 0  ? row.netAmount : 0,
-          total:       row.total     > 0  ? row.total     : 0,
-        };
-        onSave(newInv);
-      }
-    }
-    setEtaSelected(new Set());
-    setEtaBulkImporting(false);
-    setEtaOpen(false);
-  };
-
-  const toggleEtaSelect = (uuid: string) => {
-    setEtaSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(uuid)) next.delete(uuid); else next.add(uuid);
-      return next;
-    });
-  };
-
-  const toggleEtaSelectAll = () => {
-    if (etaSelected.size === etaRows.length) {
-      setEtaSelected(new Set());
-    } else {
-      setEtaSelected(new Set(etaRows.map(r => r.uuid)));
     }
   };
 
@@ -1187,9 +1154,6 @@ const CreateInvoiceScreen: React.FC<{
                 <table className="w-full text-xs text-right">
                   <thead className="bg-[#1b2130] text-gray-400">
                     <tr>
-                      <th className="px-3 py-2 w-8">
-                        <input type="checkbox" checked={etaSelected.size === etaRows.length && etaRows.length > 0} onChange={toggleEtaSelectAll} className="accent-blue-500 cursor-pointer" />
-                      </th>
                       <th className="px-3 py-2">رقم الفاتورة</th>
                       <th className="px-3 py-2">المورد</th>
                       <th className="px-3 py-2">التاريخ</th>
@@ -1200,10 +1164,7 @@ const CreateInvoiceScreen: React.FC<{
                   </thead>
                   <tbody className="divide-y divide-gray-700/50">
                     {etaRows.map(row => (
-                      <tr key={row.uuid} className={`hover:bg-[#2d3648] transition-colors ${etaSelected.has(row.uuid) ? 'bg-blue-900/20' : ''}`}>
-                        <td className="px-3 py-2">
-                          <input type="checkbox" checked={etaSelected.has(row.uuid)} onChange={() => toggleEtaSelect(row.uuid)} className="accent-blue-500 cursor-pointer" />
-                        </td>
+                      <tr key={row.uuid} className="hover:bg-[#2d3648] transition-colors">
                         <td className="px-3 py-2 text-gray-200 font-mono">{row.internalId}</td>
                         <td className="px-3 py-2 text-gray-300 max-w-[180px] truncate" title={row.issuerName}>{row.issuerName}</td>
                         <td className="px-3 py-2 text-gray-400">{row.dateTimeIssued}</td>
@@ -1235,20 +1196,6 @@ const CreateInvoiceScreen: React.FC<{
                     ))}
                   </tbody>
                 </table>
-              </div>
-            )}
-
-            {/* Bulk import bar */}
-            {!etaLoading && etaSelected.size > 0 && (
-              <div className="flex items-center justify-between bg-blue-900/30 border border-blue-700/40 rounded-lg px-3 py-2">
-                <span className="text-xs text-blue-300">تم تحديد {etaSelected.size} فاتورة</span>
-                <button type="button" onClick={importEtaBulk} disabled={etaBulkImporting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors disabled:opacity-50">
-                  <span className={`material-icons text-sm ${etaBulkImporting ? 'animate-spin' : ''}`}>
-                    {etaBulkImporting ? 'refresh' : 'download'}
-                  </span>
-                  {etaBulkImporting ? 'جارٍ الاستيراد...' : `استيراد ${etaSelected.size} فاتورة`}
-                </button>
               </div>
             )}
 
