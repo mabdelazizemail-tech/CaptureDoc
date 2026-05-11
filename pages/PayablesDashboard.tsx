@@ -2227,7 +2227,7 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
           invoices={invoices}
           selectedInvoice={payFor}
           onSave={handleSave}
-          onBack={() => setScreen(activeTab)}
+          onBack={() => { setScreen('dashboard'); setActiveTab('dashboard'); }}
         />
       )}
       {screen === 'history' && (
