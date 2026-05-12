@@ -983,13 +983,16 @@ const CreateInvoiceScreen: React.FC<{
     }
   };
 
-  // Auto-calculate total
+  const [taxManual, setTaxManual] = useState(false);
+
+  // Auto-calculate tax + total
   useEffect(() => {
-    const tax = form.hasTax ? form.amount * 0.14 : 0;
+    const autoTax = form.hasTax ? form.amount * 0.14 : 0;
+    const tax = taxManual ? form.tax : parseFloat(autoTax.toFixed(2));
     const wht = form.withholdingTax ?? 0;
     const total = form.amount + tax - wht;
-    setForm(p => ({ ...p, tax: parseFloat(tax.toFixed(2)), total: parseFloat(total.toFixed(2)) }));
-  }, [form.amount, form.withholdingTax, form.hasTax]);
+    setForm(p => ({ ...p, ...(taxManual ? {} : { tax }), total: parseFloat(total.toFixed(2)) }));
+  }, [form.amount, form.withholdingTax, form.hasTax, taxManual, form.tax]);
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -1334,11 +1337,12 @@ const CreateInvoiceScreen: React.FC<{
             <Field label="ضريبة القيمة المضافة 14%">
               <div className="flex items-center gap-2">
                 <label className="flex items-center gap-1.5 cursor-pointer select-none whitespace-nowrap">
-                  <input type="checkbox" checked={!!form.hasTax} onChange={e => set('hasTax', e.target.checked)}
+                  <input type="checkbox" checked={!!form.hasTax} onChange={e => { set('hasTax', e.target.checked); setTaxManual(false); }}
                     className="accent-primary w-4 h-4" />
                   <span className="text-xs text-gray-400">تشمل ضريبة</span>
                 </label>
-                <input type="number" value={form.tax} readOnly className={`${inputCls()} opacity-60 cursor-not-allowed flex-1`} />
+                <input type="number" min="0" value={form.tax} onChange={e => { setTaxManual(true); set('tax', parseFloat(e.target.value) || 0); }}
+                  className={`${inputCls()} flex-1`} />
               </div>
             </Field>
             <Field label="خصم الضريبة تحت الحساب">
