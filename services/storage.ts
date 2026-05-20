@@ -53,6 +53,25 @@ export const StorageService = {
             };
         }
 
+        // CRM Only Users Local Fallbacks
+        if (cleanUser === 'menna.youssif@capture-doc.com' && cleanPass === 'Capture@26') {
+            return {
+                id: '9bc1423b-de24-4683-a09c-afdd6f0715a8',
+                username: 'menna.youssif@capture-doc.com',
+                name: 'Menna Youssif',
+                role: 'supervisor'
+            };
+        }
+
+        if (cleanUser === 'hossam.yazal@capture-doc.com' && cleanPass === 'Capture@26') {
+            return {
+                id: '394a3720-f2c3-4bd7-afa0-261d16dbe78c',
+                username: 'hossam.yazal@capture-doc.com',
+                name: 'Hossam Yazal',
+                role: 'supervisor'
+            };
+        }
+
         return null; // For standard users, we now use Supabase Auth in Login.tsx
     },
 

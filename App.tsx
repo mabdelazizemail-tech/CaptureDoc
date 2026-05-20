@@ -24,6 +24,13 @@ const isFinanceOnly = (u: User | null) =>
     FINANCE_ONLY_USERS.includes((u.email || '').toLowerCase())
   );
 
+const CRM_ONLY_USERS = ['menna.youssif@capture-doc.com', 'hossam.yazal@capture-doc.com'];
+const isCRMOnly = (u: User | null) =>
+  !!u && (
+    CRM_ONLY_USERS.includes((u.username || '').toLowerCase()) ||
+    CRM_ONLY_USERS.includes((u.email || '').toLowerCase())
+  );
+
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'لوحة التحكم',
   '/reports': 'التحليلات والتقارير',
@@ -46,6 +53,10 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 function getDefaultRoute(user: User): string {
+  if (
+    CRM_ONLY_USERS.includes((user.username || '').toLowerCase()) ||
+    CRM_ONLY_USERS.includes((user.email || '').toLowerCase())
+  ) return '/crm';
   if (
     FINANCE_ONLY_USERS.includes((user.username || '').toLowerCase()) ||
     FINANCE_ONLY_USERS.includes((user.email || '').toLowerCase())
@@ -214,8 +225,9 @@ const App: React.FC = () => {
   }
 
   const selectedWorkspace = localStorage.getItem('selected_workspace');
+  const isCrmOnly = isCRMOnly(user);
 
-  if (location.pathname.startsWith('/crm') || selectedWorkspace === 'crm') {
+  if (location.pathname.startsWith('/crm') || selectedWorkspace === 'crm' || isCrmOnly) {
     if (!location.pathname.startsWith('/crm')) {
       return <Navigate to="/crm" replace />;
     }
