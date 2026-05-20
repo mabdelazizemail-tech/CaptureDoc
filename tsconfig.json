@@ -30,6 +30,7 @@
     "node_modules",
     "hr-system",
     "supabase",
-    "supabase/functions"
+    "supabase/functions",
+    "frontend/capturecrm-ui-temp"
   ]
 }

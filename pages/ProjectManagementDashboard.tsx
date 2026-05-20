@@ -141,6 +141,7 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
     const [savingVolume, setSavingVolume] = useState(false);
 
     const isAdmin = user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'project_manager' || user.role === 'it_specialist';
+    const [chartJsOffline, setChartJsOffline] = useState(false);
 
 
 

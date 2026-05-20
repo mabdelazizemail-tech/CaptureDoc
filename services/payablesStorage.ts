@@ -83,6 +83,7 @@ interface PayableInvoice {
   hasTax?: boolean;
   pdfData?: string;
   pdfName?: string;
+  etaSubmissionDate?: string;
 }
 
 // ─── Row → camelCase converters ─────────────────────────────────────────────
@@ -139,6 +140,7 @@ function invoiceFromRow(r: PayableInvoiceRow): PayableInvoice {
     notes: r.notes,
     pdfData: r.pdf_data ?? undefined,
     pdfName: r.pdf_name ?? undefined,
+    etaSubmissionDate: r.eta_submission_date ?? undefined,
     payments: (r.payable_payments ?? []).map(paymentFromRow),
     deductions: (r.payable_deductions ?? []).map(deductionFromRow),
   };
@@ -171,6 +173,7 @@ function invoiceToRow(inv: PayableInvoice): Omit<PayableInvoiceRow, 'created_at'
     notes: inv.notes,
     pdf_data: inv.pdfData ?? null,
     pdf_name: inv.pdfName ?? null,
+    eta_submission_date: inv.etaSubmissionDate ?? null,
   };
 }
 

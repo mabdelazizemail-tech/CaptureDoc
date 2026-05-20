@@ -30,6 +30,7 @@ export interface User {
   teamName?: string; // Only for supervisors
   projectId?: string; // Null for super_admin, required for others
   reportsTo?: string; // ID of the Project Manager this user reports to (for Supervisors)
+  email?: string;
 }
 
 export interface Operator {

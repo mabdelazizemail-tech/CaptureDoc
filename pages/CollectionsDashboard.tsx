@@ -2668,7 +2668,7 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
     let cancelled = false;
     (async () => {
       try {
-        let rows = await loadInvoicesRemote<Invoice>();
+        let rows = await loadInvoicesRemote();
         if (rows.length === 0) {
           try {
             const raw = localStorage.getItem('collections.invoices.v1');

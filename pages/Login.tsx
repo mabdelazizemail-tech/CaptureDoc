@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import { StorageService } from '../services/storage';
 import { User } from '../services/types';
@@ -8,6 +9,18 @@ interface LoginProps {
 }
 
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
+  const navigate = useNavigate();
+  const [sessionUser, setSessionUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    if (sessionUser) {
+      const emailLower = (sessionUser.email || sessionUser.username || '').toLowerCase();
+      if (emailLower === 'taher.mohamed@pbkadvisory.com') {
+        localStorage.setItem('selected_workspace', 'erp');
+        onLogin(sessionUser);
+      }
+    }
+  }, [sessionUser, onLogin]);
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,7 +42,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       // This allows logging in as 'admin' / 'admin' without Supabase
       const localUser = await StorageService.login(email, password);
       if (localUser) {
-        onLogin(localUser);
+        setSessionUser(localUser);
         setLoading(false);
         return;
       }
@@ -72,7 +85,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         if (data.user) {
           const profile = await StorageService.getUserProfile(data.user.id);
           if (profile) {
-            onLogin(profile);
+            setSessionUser(profile);
           } else {
             // Profile might be missing if trigger failed or not setup
             setError('تم تسجيل الدخول ولكن لم يتم العثور على ملف المستخدم. يرجى الاتصال بالدعم.');
@@ -100,6 +113,57 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       setLoading(false);
     }
   };
+
+  if (sessionUser) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#f0f3f6] p-4 font-sans" dir="rtl">
+        <div className="bg-white p-8 md:p-12 rounded-3xl shadow-xl w-full max-w-2xl border border-gray-100/80 transition-all text-center">
+          <h2 className="text-3xl font-bold text-gray-800 tracking-tight">أهلاً بك، {sessionUser.full_name || sessionUser.email}</h2>
+          <p className="text-gray-400 text-sm mt-2 font-medium">يرجى تحديد مساحة العمل للبدء:</p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+            {/* CaptureFlow ERP Option */}
+            <button
+              onClick={() => {
+                localStorage.setItem('selected_workspace', 'erp');
+                onLogin(sessionUser);
+              }}
+              className="group p-6 bg-gray-50 border border-gray-200 hover:border-blue-500 hover:bg-blue-50/30 rounded-2xl transition-all duration-200 text-right flex flex-col items-start shadow-sm active:scale-[0.98] cursor-pointer"
+            >
+              <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform mb-4">
+                <span className="material-icons text-2xl">business</span>
+              </div>
+              <h3 className="text-lg font-bold text-gray-800 group-hover:text-blue-600 transition-colors">CaptureFlow ERP</h3>
+              <p className="text-gray-400 text-xs mt-2 font-semibold leading-relaxed">الوصول إلى الإدارة المالية، الموارد البشرية، فحص النظام، وإدارة المشاريع.</p>
+            </button>
+
+            {/* CaptureCRM Option */}
+            <button
+              onClick={() => {
+                localStorage.setItem('selected_workspace', 'crm');
+                onLogin(sessionUser);
+              }}
+              className="group p-6 bg-gray-50 border border-gray-200 hover:border-blue-500 hover:bg-blue-50/30 rounded-2xl transition-all duration-200 text-right flex flex-col items-start shadow-sm active:scale-[0.98] cursor-pointer"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#0052cc]/10 text-[#0052cc] flex items-center justify-center group-hover:scale-110 transition-transform mb-4">
+                <span className="material-icons text-2xl">hub</span>
+              </div>
+              <h3 className="text-lg font-bold text-gray-800 group-hover:text-[#0052cc] transition-colors">CaptureCRM</h3>
+              <p className="text-gray-400 text-xs mt-2 font-semibold leading-relaxed">إدارة العملاء، الصفقات النشطة، قنوات البيع، والمهام اليومية.</p>
+            </button>
+          </div>
+
+          <button
+            onClick={() => setSessionUser(null)}
+            className="mt-8 text-sm text-gray-400 font-bold hover:text-red-500 transition-colors flex items-center justify-center gap-1 mx-auto cursor-pointer"
+          >
+            <span className="material-icons text-sm">logout</span>
+            <span>تسجيل الخروج</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#f0f3f6] p-4 font-sans" dir="rtl">

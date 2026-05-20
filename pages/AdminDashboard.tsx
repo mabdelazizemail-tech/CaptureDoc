@@ -133,6 +133,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, onlineUser
     const categoryChartRef = useRef<HTMLCanvasElement>(null);
     const distributionChartRef = useRef<HTMLCanvasElement>(null);
 
+    const [chartJsOffline, setChartJsOffline] = useState(false);
     const chartInstances = useRef<{ [key: string]: any }>({});
 
     const currentProjectRef = useRef(currentProject);
@@ -301,16 +302,38 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, onlineUser
 
     // 5. Charts
     useEffect(() => {
-        if ((activeTab === 'reports' || activeTab === 'dashboard') && logs.length > 0 && !loading) {
-            initCharts();
-        }
+        let retryTimer: any;
+        let attempts = 0;
+        const attemptInit = () => {
+            if (activeTab === 'reports' || activeTab === 'dashboard') {
+                if (typeof Chart === 'undefined') {
+                    attempts++;
+                    if (attempts > 6) { // After 3 seconds (6 * 500ms)
+                        setChartJsOffline(true);
+                    }
+                    retryTimer = setTimeout(attemptInit, 500);
+                } else {
+                    setChartJsOffline(false);
+                    if (logs.length > 0 && !loading) {
+                        initCharts();
+                    }
+                }
+            }
+        };
+        attemptInit();
         return () => {
-            Object.values(chartInstances.current).forEach((chart: any) => chart.destroy());
+            if (retryTimer) clearTimeout(retryTimer);
+            Object.values(chartInstances.current).forEach((chart: any) => {
+                if (chart && typeof chart.destroy === 'function') {
+                    chart.destroy();
+                }
+            });
+            chartInstances.current = {};
         };
     }, [activeTab, logs, loading, supervisors]);
 
     const initCharts = () => {
-        // ... [Chart initialization code remains identical] ...
+        if (typeof Chart === 'undefined') return;
         const destroyChart = (key: string) => {
             if (chartInstances.current[key]) {
                 chartInstances.current[key].destroy();
@@ -403,6 +426,65 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, onlineUser
                 options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'bottom', labels: { font: { family: 'Cairo', size: 10 }, boxWidth: 10 } } } }
             });
         }
+    };
+
+    // Fallback Mock Preview Generators (when CDN offline or database is empty)
+    const showMockPreview = logs.length === 0 || chartJsOffline;
+
+    const renderTrendMock = () => {
+        return (
+            <div className="relative w-full h-full flex flex-col justify-between">
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/70 backdrop-blur-[2px] z-10 rounded-lg">
+                    <span className="material-icons text-4xl text-blue-500 mb-2">insights</span>
+                    <p className="text-gray-800 font-bold text-sm">
+                        {chartJsOffline ? "وضع عدم الاتصال — جاري تحميل رسومات الأداء" : "توضيحي: لا توجد تقييمات كافية لعرض الأداء الزمني"}
+                    </p>
+                    <p className="text-gray-400 text-xs mt-1">سيتم رسم البيانات الحقيقية بمجرد تسجيل التقييمات اليومية</p>
+                </div>
+                <svg className="w-full h-full opacity-20 pointer-events-none" viewBox="0 0 500 200" preserveAspectRatio="none">
+                    <defs>
+                        <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#007aff" stopOpacity="0.4" />
+                            <stop offset="100%" stopColor="#007aff" stopOpacity="0.0" />
+                        </linearGradient>
+                    </defs>
+                    <line x1="0" y1="40" x2="500" y2="40" stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4 4" />
+                    <line x1="0" y1="80" x2="500" y2="80" stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4 4" />
+                    <line x1="0" y1="120" x2="500" y2="120" stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4 4" />
+                    <line x1="0" y1="160" x2="500" y2="160" stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4 4" />
+                    <path d="M 0 160 Q 100 100, 200 120 T 400 60 T 500 80 L 500 200 L 0 200 Z" fill="url(#trendGrad)" />
+                    <path d="M 0 160 Q 100 100, 200 120 T 400 60 T 500 80" fill="none" stroke="#007aff" strokeWidth="3" />
+                    <circle cx="100" cy="120" r="5" fill="#007aff" />
+                    <circle cx="230" cy="115" r="5" fill="#007aff" />
+                    <circle cx="340" cy="70" r="5" fill="#007aff" />
+                    <circle cx="450" cy="75" r="5" fill="#007aff" />
+                </svg>
+            </div>
+        );
+    };
+
+    const renderDistributionMock = () => {
+        return (
+            <div className="relative w-full h-full flex flex-col items-center justify-center">
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/70 backdrop-blur-[2px] z-10 rounded-lg">
+                    <span className="material-icons text-3xl text-blue-500 mb-1">donut_large</span>
+                    <p className="text-gray-800 font-bold text-xs text-center px-4">
+                        {chartJsOffline ? "جاري الاتصال..." : "توضيحي: نسب التقييمات"}
+                    </p>
+                </div>
+                <svg className="w-36 h-36 opacity-20 pointer-events-none" viewBox="0 0 36 36">
+                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="#f3f4f6" strokeWidth="3" />
+                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="#10b981" strokeWidth="3.2" strokeDasharray="40 60" strokeDashoffset="25" />
+                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="#3b82f6" strokeWidth="3.2" strokeDasharray="30 70" strokeDashoffset="85" />
+                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="#f59e0b" strokeWidth="3.2" strokeDasharray="20 80" strokeDashoffset="55" />
+                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="#ef4444" strokeWidth="3.2" strokeDasharray="10 90" strokeDashoffset="35" />
+                </svg>
+                <div className="absolute flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-2xl font-bold text-gray-400">8.5</span>
+                    <span className="text-[9px] text-gray-400 uppercase font-bold">Avg Score</span>
+                </div>
+            </div>
+        );
     };
 
     // Stats
@@ -1645,16 +1727,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, onlineUser
                                     <div className="flex justify-between items-center mb-6">
                                         <h3 className="font-bold text-gray-800 text-lg">تحليل الأداء الزمني</h3>
                                     </div>
-                                    <div className="h-72 w-full"><canvas ref={trendChartRef}></canvas></div>
+                                    <div className="h-72 w-full">
+                                        {showMockPreview ? renderTrendMock() : <canvas ref={trendChartRef}></canvas>}
+                                    </div>
                                 </div>
                                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center">
                                     <h3 className="font-bold text-gray-800 text-lg w-full text-right mb-4">توزيع التقييمات</h3>
                                     <div className="h-56 w-full relative">
-                                        <canvas ref={distributionChartRef}></canvas>
-                                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                            <span className="text-3xl font-bold text-gray-800">{stats.avg}</span>
-                                            <span className="text-xs text-gray-400">Avg Score</span>
-                                        </div>
+                                        {showMockPreview ? renderDistributionMock() : (
+                                            <>
+                                                <canvas ref={distributionChartRef}></canvas>
+                                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                                    <span className="text-3xl font-bold text-gray-800">{stats.avg}</span>
+                                                    <span className="text-xs text-gray-400">Avg Score</span>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             </div>

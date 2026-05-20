@@ -127,13 +127,13 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 
 const approvalColor: Record<ApprovalStatus, string> = {
   Draft:    'bg-gray-700 text-gray-300',
-  Pending:  'bg-yellow-900/50 text-yellow-300',
+  Pending:  'bg-red-900/50 text-red-400',
   Approved: 'bg-blue-900/50 text-blue-300',
   Rejected: 'bg-red-900/40 text-red-400',
 };
 const approvalAr: Record<ApprovalStatus, string> = {
   Draft:    'مسودة',
-  Pending:  'بانتظار الاعتماد',
+  Pending:  'طلب اعتماد',
   Approved: 'معتمدة',
   Rejected: 'مرفوضة',
 };
@@ -515,7 +515,8 @@ const DashboardScreen: React.FC<{
                     <td className="px-4 py-3 text-xs text-gray-200">{inv.dueDate || '—'}</td>
                     <td className="px-4 py-3 font-semibold text-white">{fmt(balanceInEgp(inv))} <span className="text-gray-400 font-normal">EGP</span></td>
                     <td className="px-4 py-3">
-                      <span className={`inline-block text-[11px] px-2 py-0.5 rounded-full font-medium ${approvalColor[inv.approvalStatus]}`}>
+                      <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium ${approvalColor[inv.approvalStatus]}`}>
+                        {inv.approvalStatus === 'Pending' && <span className="material-icons text-[13px]">pending_actions</span>}
                         {approvalAr[inv.approvalStatus]}
                       </span>
                     </td>
@@ -546,8 +547,9 @@ const InvoiceListScreen: React.FC<{
   onCreate: () => void;
   onDelete: (ids: string[]) => void;
   onEdit: (inv: PayableInvoice) => void;
+  onRequestApproval: (ids: string[]) => void;
   canDelete: boolean;
-}> = ({ invoices, onOpen, onCreate, onDelete, onEdit, canDelete }) => {
+}> = ({ invoices, onOpen, onCreate, onDelete, onEdit, onRequestApproval, canDelete }) => {
   const [search, setSearch]               = useState('');
   const [filterStatus, setFilterStatus]   = useState<APStatus | 'all'>('all');
   const [filterApproval, setFilterApproval] = useState<ApprovalStatus | 'all'>('all');
@@ -591,9 +593,14 @@ const InvoiceListScreen: React.FC<{
     });
   }, [filtered, sortCol, sortDir]);
 
-  const allChecked = sorted.length > 0 && sorted.every(i => selected.has(i.id));
-  const toggleAll  = () => setSelected(allChecked ? new Set() : new Set(sorted.map(i => i.id)));
+  const unpaidSorted = sorted.filter(i => effectiveAPStatus(i) !== 'Paid');
+  const allChecked = unpaidSorted.length > 0 && unpaidSorted.every(i => selected.has(i.id));
+  const toggleAll  = () => setSelected(allChecked ? new Set() : new Set(unpaidSorted.map(i => i.id)));
   const toggle     = (id: string) => setSelected(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const selectedUnpaidNonPending = sorted.filter(i =>
+    selected.has(i.id) && effectiveAPStatus(i) !== 'Paid' && i.approvalStatus !== 'Pending' && i.approvalStatus !== 'Approved'
+  );
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -626,6 +633,13 @@ const InvoiceListScreen: React.FC<{
             <option key={t} value={t}>{t}</option>
           )}
         </select>
+        {selected.size > 0 && selectedUnpaidNonPending.length > 0 && (
+          <button onClick={() => { onRequestApproval(selectedUnpaidNonPending.map(i => i.id)); setSelected(new Set()); }}
+            className="flex items-center gap-1 px-3 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors">
+            <span className="material-icons text-base">approval</span>
+            طلب اعتماد ({selectedUnpaidNonPending.length})
+          </button>
+        )}
         {canDelete && selected.size > 0 && (
           <button onClick={() => { onDelete([...selected]); setSelected(new Set()); }}
             className="flex items-center gap-1 px-3 py-2 text-sm bg-red-900/40 text-red-400 rounded-lg hover:bg-red-900/60 transition-colors">
@@ -650,12 +664,10 @@ const InvoiceListScreen: React.FC<{
           <table className="w-full text-sm text-gray-300">
             <thead className="text-xs text-gray-500 border-b border-gray-700 bg-[#1b2130]">
               <tr>
-                {canDelete && (
-                  <th className="px-4 py-3">
-                    <input type="checkbox" checked={allChecked} onChange={toggleAll}
-                      className="w-4 h-4 accent-primary" />
-                  </th>
-                )}
+                <th className="px-4 py-3">
+                  <input type="checkbox" checked={allChecked} onChange={toggleAll}
+                    className="w-4 h-4 accent-primary" />
+                </th>
                 <SortTh label="رقم الفاتورة"     col="invoiceNo"   sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                 <SortTh label="المورد"            col="supplier"    sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                 <SortTh label="النوع"             col="type"        sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
@@ -673,14 +685,13 @@ const InvoiceListScreen: React.FC<{
                 const aps = effectiveAPStatus(inv);
                 return (
                   <tr key={inv.id}
-                      className="hover:bg-[#2d3648] transition-colors cursor-pointer"
+                      className={`transition-colors cursor-pointer ${inv.approvalStatus === 'Pending' ? 'bg-red-900/20 hover:bg-red-900/30' : 'hover:bg-[#2d3648]'}`}
                       onClick={() => onOpen(inv)}>
-                    {canDelete && (
-                      <td className="px-4 py-3" onClick={e => { e.stopPropagation(); toggle(inv.id); }}>
-                        <input type="checkbox" checked={selected.has(inv.id)} onChange={() => {}}
-                          className="w-4 h-4 accent-primary" />
-                      </td>
-                    )}
+                    <td className="px-4 py-3" onClick={e => { e.stopPropagation(); if (aps !== 'Paid') toggle(inv.id); }}>
+                      <input type="checkbox" checked={selected.has(inv.id)} onChange={() => {}}
+                        disabled={aps === 'Paid'}
+                        className="w-4 h-4 accent-primary disabled:opacity-30" />
+                    </td>
                     <td className="px-4 py-3 font-mono text-xs text-white">{inv.invoiceNo}</td>
                     <td className="px-4 py-3 font-medium text-white">{inv.supplier}</td>
                     <td className="px-4 py-3 text-xs text-gray-200">{inv.invoiceType}</td>
@@ -689,7 +700,8 @@ const InvoiceListScreen: React.FC<{
                     <td className="px-4 py-3 font-semibold text-white">{fmt(totalInEgp(inv))} <span className="text-gray-400 font-normal text-xs">EGP</span></td>
                     <td className="px-4 py-3 font-semibold text-white">{fmt(balanceInEgp(inv))} <span className="text-gray-400 font-normal text-xs">EGP</span></td>
                     <td className="px-4 py-3">
-                      <span className={`inline-block text-[11px] px-2 py-0.5 rounded-full font-medium ${approvalColor[inv.approvalStatus]}`}>
+                      <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium ${approvalColor[inv.approvalStatus]}`}>
+                        {inv.approvalStatus === 'Pending' && <span className="material-icons text-[13px]">pending_actions</span>}
                         {approvalAr[inv.approvalStatus]}
                       </span>
                     </td>
@@ -710,7 +722,7 @@ const InvoiceListScreen: React.FC<{
                 );
               })}
               {sorted.length === 0 && (
-                <tr><td colSpan={canDelete ? 11 : 9} className="px-4 py-10 text-center text-gray-500">لا توجد نتائج مطابقة</td></tr>
+                <tr><td colSpan={canDelete ? 11 : 10} className="px-4 py-10 text-center text-gray-500">لا توجد نتائج مطابقة</td></tr>
               )}
             </tbody>
           </table>
@@ -2045,7 +2057,7 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
   useEffect(() => {
     (async () => {
       const [remote, allProjects] = await Promise.all([
-        loadPayables<PayableInvoice>(),
+        loadPayables(),
         StorageService.getProjects(),
       ]);
       setInvoices(remote.length > 0 ? remote : []);
@@ -2096,6 +2108,13 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
 
     setScreen(activeTab === 'invoice-list' ? 'invoice-list' : 'dashboard');
     setEditInv(null);
+  };
+
+  const handleRequestApproval = async (ids: string[]) => {
+    const updated = invoices.map(inv =>
+      ids.includes(inv.id) ? { ...inv, approvalStatus: 'Pending' as ApprovalStatus } : inv
+    );
+    await persist(updated);
   };
 
   const handleDelete = async (ids: string[]) => {
@@ -2204,6 +2223,7 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
           onCreate={() => openEdit(null)}
           onDelete={handleDelete}
           onEdit={inv => openEdit(inv)}
+          onRequestApproval={handleRequestApproval}
           canDelete={canDelete}
         />
       )}

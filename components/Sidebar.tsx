@@ -29,7 +29,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isOpen, toggleSidebar
   };
 
   const menuItems = useMemo<MenuItem[]>(() => {
-    const financeOnly = ['taher.mohamed@pbkadvisory.com'].includes((user.username || '').toLowerCase());
+    const userEmail = (user.email || user.username || '').toLowerCase();
+    const financeOnly = ['taher.mohamed@pbkadvisory.com'].includes(userEmail);
     if (financeOnly) {
       return [{
         id: 'financial-management',

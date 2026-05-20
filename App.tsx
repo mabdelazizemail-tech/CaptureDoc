@@ -15,10 +15,14 @@ import JournalEntriesDashboard from './pages/JournalEntriesDashboard';
 import Sidebar from './components/Sidebar';
 import { User } from './services/types';
 import { supabase } from './services/supabaseClient';
+import CRMModule from './pages/crm';
 
 const FINANCE_ONLY_USERS = ['taher.mohamed@pbkadvisory.com'];
 const isFinanceOnly = (u: User | null) =>
-  !!u && FINANCE_ONLY_USERS.includes((u.username || '').toLowerCase());
+  !!u && (
+    FINANCE_ONLY_USERS.includes((u.username || '').toLowerCase()) ||
+    FINANCE_ONLY_USERS.includes((u.email || '').toLowerCase())
+  );
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'لوحة التحكم',
@@ -42,7 +46,10 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 function getDefaultRoute(user: User): string {
-  if (FINANCE_ONLY_USERS.includes((user.username || '').toLowerCase())) return '/collections';
+  if (
+    FINANCE_ONLY_USERS.includes((user.username || '').toLowerCase()) ||
+    FINANCE_ONLY_USERS.includes((user.email || '').toLowerCase())
+  ) return '/collections';
   if (user.role === 'it_specialist') return '/assets';
   if (user.role === 'hr_admin') return '/hr';
   const isAdmin = user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'project_manager';
@@ -137,7 +144,7 @@ const AppShell: React.FC<{
               <Route path="/journal-entries" element={<JournalEntriesDashboard user={user} />} />
               <Route path="/health-check" element={<HealthCheck user={user} />} />
               <Route path="/debug" element={<DatabaseDebugger />} />
-
+              
               {/* Root and catch-all */}
               <Route path="*" element={<Navigate to={getDefaultRoute(user)} replace />} />
             </Routes>
@@ -197,12 +204,22 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
+    localStorage.removeItem('selected_workspace');
     setUser(null);
     setOnlineUsers(new Set());
   };
 
   if (!user) {
     return <Login onLogin={handleLogin} />;
+  }
+
+  const selectedWorkspace = localStorage.getItem('selected_workspace');
+
+  if (location.pathname.startsWith('/crm') || selectedWorkspace === 'crm') {
+    if (!location.pathname.startsWith('/crm')) {
+      return <Navigate to="/crm" replace />;
+    }
+    return <CRMModule user={user} onLogout={handleLogout} />;
   }
 
   return <AppShell user={user} onlineUsers={onlineUsers} onLogout={handleLogout} />;
