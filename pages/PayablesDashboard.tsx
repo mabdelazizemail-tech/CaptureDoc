@@ -144,7 +144,7 @@ const apStatusColor: Record<APStatus, string> = {
   'Overdue':        'bg-red-900/50 text-red-400',
   'Partially Paid': 'bg-orange-900/50 text-orange-300',
   'Paid':           'bg-green-900/50 text-green-400',
-  'On Hold':        'bg-purple-900/50 text-purple-300',
+  'On Hold':        'bg-cyan-900/50 text-cyan-300',
 };
 const apStatusAr: Record<APStatus, string> = {
   'Not Due':        'لم يحن موعده',
@@ -415,9 +415,9 @@ const DashboardScreen: React.FC<{
           label="إجمالي المدفوع" value={fmt(totalPaidAmt)}
           border="border-green-800/30"
         />
-        <div className="bg-[#232b3e] rounded-xl p-4 border border-purple-800/30">
+        <div className="bg-[#232b3e] rounded-xl p-4 border border-cyan-800/30">
           <div className="flex items-center gap-2 mb-2">
-            <span className="material-icons text-lg text-purple-400">event_upcoming</span>
+            <span className="material-icons text-lg text-cyan-400">event_upcoming</span>
             <span className="text-gray-400 text-xs">مستحق خلال 7 أيام</span>
           </div>
           <p className="text-xl font-bold text-white">{fmt(next7)}</p>

@@ -427,9 +427,12 @@ export default function CRMRecordDetail({ type: propType, id: propId, onClose }:
                         <span className="block text-[11px] font-semibold text-[var(--muted-foreground)]">Associated Account</span>
                         <span className="text-sm font-semibold text-[var(--foreground)]">
                           {contact.company ? (
-                            <Link to={`/crm/detail/account/${contact.company.id}`} className="text-[var(--primary)] hover:underline font-semibold">
+                            <span 
+                              onClick={() => navigate(`/crm/detail/account/${contact.company!.id}`)} 
+                              className="text-[var(--primary)] hover:underline font-semibold cursor-pointer"
+                            >
                               {contact.company.name}
-                            </Link>
+                            </span>
                           ) : '-'}
                         </span>
                       </div>
@@ -477,9 +480,12 @@ export default function CRMRecordDetail({ type: propType, id: propId, onClose }:
                         <span className="block text-[11px] font-semibold text-[var(--muted-foreground)]">Client Account</span>
                         <span className="text-sm font-semibold text-[var(--foreground)]">
                           {deal.company ? (
-                            <Link to={`/crm/detail/account/${deal.company.id}`} className="text-[var(--primary)] hover:underline font-semibold">
+                            <span 
+                              onClick={() => navigate(`/crm/detail/account/${deal.company!.id}`)} 
+                              className="text-[var(--primary)] hover:underline font-semibold cursor-pointer"
+                            >
                               {deal.company.name}
-                            </Link>
+                            </span>
                           ) : '-'}
                         </span>
                       </div>
@@ -487,9 +493,12 @@ export default function CRMRecordDetail({ type: propType, id: propId, onClose }:
                         <span className="block text-[11px] font-semibold text-[var(--muted-foreground)]">Primary Contact Partner</span>
                         <span className="text-sm font-semibold text-[var(--foreground)]">
                           {deal.contact ? (
-                            <Link to={`/crm/detail/contact/${deal.contact.id}`} className="text-[var(--primary)] hover:underline font-semibold">
+                            <span 
+                              onClick={() => navigate(`/crm/detail/contact/${deal.contact!.id}`)} 
+                              className="text-[var(--primary)] hover:underline font-semibold cursor-pointer"
+                            >
                               {deal.contact.first_name} {deal.contact.last_name}
-                            </Link>
+                            </span>
                           ) : '-'}
                         </span>
                       </div>
@@ -544,9 +553,12 @@ export default function CRMRecordDetail({ type: propType, id: propId, onClose }:
                             relatedContacts.map(c => (
                               <tr key={c.id} className="hover:bg-[color-mix(in_oklab,var(--secondary)_12%,transparent)] transition-colors">
                                 <td className="px-6 py-3 font-semibold text-[var(--primary)]">
-                                  <Link to={`/crm/detail/contact/${c.id}`} className="hover:underline">
+                                  <span 
+                                    onClick={() => navigate(`/crm/detail/contact/${c.id}`)} 
+                                    className="hover:underline cursor-pointer"
+                                  >
                                     {c.first_name} {c.last_name}
-                                  </Link>
+                                  </span>
                                 </td>
                                 <td className="px-6 py-3 text-[var(--muted-foreground)]">{c.email || '—'}</td>
                                 <td className="px-6 py-3 text-[var(--muted-foreground)]">{c.phone || '—'}</td>
@@ -584,9 +596,12 @@ export default function CRMRecordDetail({ type: propType, id: propId, onClose }:
                             relatedDeals.map(d => (
                               <tr key={d.id} className="hover:bg-[color-mix(in_oklab,var(--secondary)_12%,transparent)] transition-colors">
                                 <td className="px-6 py-3 font-semibold text-[var(--primary)]">
-                                  <Link to={`/crm/detail/deal/${d.id}`} className="hover:underline">
+                                  <span 
+                                    onClick={() => navigate(`/crm/detail/deal/${d.id}`)} 
+                                    className="hover:underline cursor-pointer"
+                                  >
                                     {d.name}
-                                  </Link>
+                                  </span>
                                 </td>
                                 <td className="px-6 py-3 font-medium text-emerald-500">{d.currency} {d.value.toLocaleString()}</td>
                                 <td className="px-6 py-3">
@@ -630,9 +645,12 @@ export default function CRMRecordDetail({ type: propType, id: propId, onClose }:
                           relatedDeals.map(d => (
                             <tr key={d.id} className="hover:bg-[color-mix(in_oklab,var(--secondary)_12%,transparent)] transition-colors">
                               <td className="px-6 py-3 font-semibold text-[var(--primary)]">
-                                <Link to={`/crm/detail/deal/${d.id}`} className="hover:underline">
+                                <span 
+                                  onClick={() => navigate(`/crm/detail/deal/${d.id}`)} 
+                                  className="hover:underline cursor-pointer"
+                                >
                                   {d.name}
-                                </Link>
+                                </span>
                               </td>
                               <td className="px-6 py-3 font-medium text-emerald-500">{d.currency} {d.value.toLocaleString()}</td>
                               <td className="px-6 py-3">

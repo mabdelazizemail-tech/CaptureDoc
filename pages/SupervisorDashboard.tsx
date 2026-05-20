@@ -488,9 +488,9 @@ const SupervisorDashboard: React.FC<{ user: User }> = ({ user }) => {
                                                 <>
                                                     <div className="space-y-4 mb-8 flex-1 overflow-y-auto">
                                                         <KPISlider label="السلوك (Attitude)" icon="sentiment_satisfied_alt" value={kpiData.attitude} onChange={v => setKpiData({ ...kpiData, attitude: v })} colorClass="text-blue-600" />
-                                                        <KPISlider label="الأداء (Performance)" icon="speed" value={kpiData.performance} onChange={v => setKpiData({ ...kpiData, performance: v })} colorClass="text-indigo-600" />
-                                                        <KPISlider label="الجودة (Quality)" icon="verified" value={kpiData.quality} onChange={v => setKpiData({ ...kpiData, quality: v })} colorClass="text-purple-600" />
-                                                        <KPISlider label="المظهر (Appearance)" icon="accessibility_new" value={kpiData.appearance} onChange={v => setKpiData({ ...kpiData, appearance: v })} colorClass="text-pink-600" />
+                                                        <KPISlider label="الأداء (Performance)" icon="speed" value={kpiData.performance} onChange={v => setKpiData({ ...kpiData, performance: v })} colorClass="text-amber-600" />
+                                                        <KPISlider label="الجودة (Quality)" icon="verified" value={kpiData.quality} onChange={v => setKpiData({ ...kpiData, quality: v })} colorClass="text-emerald-600" />
+                                                        <KPISlider label="المظهر (Appearance)" icon="accessibility_new" value={kpiData.appearance} onChange={v => setKpiData({ ...kpiData, appearance: v })} colorClass="text-rose-600" />
                                                     </div>
                                                     <button onClick={handleSaveKPI} className="w-full bg-primary text-white py-4 rounded-lg font-bold text-lg hover:bg-primary-dark shadow-lg shadow-blue-500/20">
                                                         {selectedIds.size > 1 ? 'حفظ التقييم الجماعي' : 'إرسال للمراجعة'}

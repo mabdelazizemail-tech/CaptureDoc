@@ -539,7 +539,11 @@ const HRPayroll: React.FC<HRPayrollProps> = ({ user, selectedProjectId }) => {
         if (!w) { alert('يرجى السماح بالنوافذ المنبثقة لطباعة قسيمة الراتب.'); return; }
         const fmt2 = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2 });
         w.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head>
-<meta charset="utf-8"><title>قسيمة راتب – ${rec.employee_name}</title>
+<meta charset="utf-8">
+<meta name="description" content="قسيمة راتب الموظف التفصيلية للشهر الحالي">
+<meta property="og:title" content="قسيمة راتب">
+<meta property="og:description" content="قسيمة راتب الموظف التفصيلية للشهر الحالي">
+<title>قسيمة راتب – ${rec.employee_name}</title>
 <style>
   body{font-family:'Segoe UI',Tahoma,sans-serif;padding:20px;color:#333;max-width:760px;margin:0 auto}
   h1{color:#1e3a8a;font-size:22px;margin:0}

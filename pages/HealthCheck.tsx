@@ -448,7 +448,7 @@ const HealthCheck: React.FC<HealthCheckProps> = ({ user }) => {
             <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold flex items-center gap-2">
-                        <span className="material-icons text-purple-600">bug_report</span>
+                        <span className="material-icons text-emerald-600">bug_report</span>
                         Unlock Process Debugger
                     </h2>
                     <button
@@ -456,7 +456,7 @@ const HealthCheck: React.FC<HealthCheckProps> = ({ user }) => {
                         disabled={isUnlockTesting || !targetProjectId}
                         className={`px-4 py-2 rounded shadow font-bold flex items-center gap-2 ${isUnlockTesting || !targetProjectId
                             ? 'bg-gray-300 cursor-not-allowed text-gray-500'
-                            : 'bg-purple-600 text-white hover:bg-purple-700'
+                            : 'bg-emerald-600 text-white hover:bg-emerald-700'
                             }`}
                     >
                         {isUnlockTesting ? <span className="material-icons animate-spin">sync</span> : <span className="material-icons">play_arrow</span>}

@@ -283,7 +283,7 @@ const HRKPIsMobile: React.FC<HRKPIsMobileProps> = ({ user, selectedProjectId }) 
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 md:py-4">
                     <div className="flex items-center justify-between flex-wrap gap-4">
                         <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <div className={`p-2 rounded-lg ${darkMode ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-50 text-purple-600'}`}>
+                            <div className={`p-2 rounded-lg ${darkMode ? 'bg-teal-900/30 text-teal-400' : 'bg-teal-50 text-teal-600'}`}>
                                 <span className="material-icons">analytics</span>
                             </div>
                             <div className="min-w-0">
@@ -329,8 +329,8 @@ const HRKPIsMobile: React.FC<HRKPIsMobileProps> = ({ user, selectedProjectId }) 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className={`p-6 rounded-xl shadow-sm border-2 ${
                         darkMode
-                            ? 'bg-gradient-to-br from-indigo-900 to-purple-900 border-purple-700 text-white'
-                            : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white'
+                            ? 'bg-gradient-to-br from-sky-900 to-teal-900 border-teal-700 text-white'
+                            : 'bg-gradient-to-br from-sky-500 to-teal-600 text-white'
                     }`}>
                         <h3 className={`text-sm font-bold mb-2 ${darkMode ? 'text-indigo-200' : 'text-indigo-100'}`}>متوسط الموقع</h3>
                         <div className="text-3xl md:text-4xl font-black mb-3">{siteAverage}%</div>

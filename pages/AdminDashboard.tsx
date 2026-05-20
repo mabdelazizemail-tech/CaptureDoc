@@ -407,7 +407,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, onlineUser
             const count = chartLogs.length || 1;
             chartInstances.current['category'] = new Chart(ctx, {
                 type: 'radar',
-                data: { labels: ['السلوك', 'الأداء', 'الجودة', 'المظهر'], datasets: [{ label: 'نقاط القوة', data: [(totals.attitude / count).toFixed(2), (totals.performance / count).toFixed(2), (totals.quality / count).toFixed(2), (totals.appearance / count).toFixed(2)], backgroundColor: 'rgba(139, 92, 246, 0.2)', borderColor: '#8b5cf6', pointBackgroundColor: '#8b5cf6', pointBorderColor: '#fff' }] },
+                data: { labels: ['السلوك', 'الأداء', 'الجودة', 'المظهر'], datasets: [{ label: 'نقاط القوة', data: [(totals.attitude / count).toFixed(2), (totals.performance / count).toFixed(2), (totals.quality / count).toFixed(2), (totals.appearance / count).toFixed(2)], backgroundColor: 'rgba(0, 82, 204, 0.2)', borderColor: '#0052cc', pointBackgroundColor: '#0052cc', pointBorderColor: '#fff' }] },
                 options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { r: { angleLines: { color: '#e5e7eb' }, grid: { color: '#e5e7eb' }, suggestedMin: 0, suggestedMax: 10, pointLabels: { font: { size: 12, family: 'Cairo' } } } } }
             });
         }
@@ -1236,7 +1236,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, onlineUser
                 {pmTree.map(pm => (
                     <div key={pm.id} className="flex flex-col items-center animate-fade-in-up">
                         <div className="mb-8 relative">
-                            <div className="bg-purple-600 text-white p-4 rounded-xl shadow-lg w-64 text-center z-10 relative">
+                            <div className="bg-teal-600 text-white p-4 rounded-xl shadow-lg w-64 text-center z-10 relative">
                                 <div className="font-bold text-lg">{pm.name}</div>
                                 <div className="text-xs opacity-75 uppercase tracking-wider">Project Manager</div>
                             </div>
@@ -1678,8 +1678,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, onlineUser
                                         <div className="font-bold text-gray-800 text-lg">{site.pendingRequestsCount}</div>
                                         <div className="text-[10px] text-gray-500">Requests</div>
                                     </div>
-                                    <div className="text-center p-2 rounded bg-purple-50 border border-purple-100">
-                                        <span className="material-icons text-purple-500 text-xl mb-1">build</span>
+                                    <div className="text-center p-2 rounded bg-teal-50 border border-teal-100">
+                                        <span className="material-icons text-teal-600 text-xl mb-1">build</span>
                                         <div className="font-bold text-gray-800 text-lg">{site.assetsMaintenanceCount}</div>
                                         <div className="text-[10px] text-gray-500">Assets</div>
                                     </div>
@@ -1716,7 +1716,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, onlineUser
                                 {/* ... other stats ... */}
                                 <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
                                     <div className="flex justify-between items-start mb-2">
-                                        <div className="p-2 rounded-lg bg-purple-50 text-purple-600"><span className="material-icons">assignment_turned_in</span></div>
+                                        <div className="p-2 rounded-lg bg-teal-50 text-teal-600"><span className="material-icons">assignment_turned_in</span></div>
                                     </div>
                                     <h3 className="text-3xl font-bold text-gray-800 mb-1">{stats.total}</h3>
                                     <p className="text-gray-400 text-xs font-bold">إجمالي التقييمات (Approved)</p>
@@ -1753,7 +1753,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, onlineUser
                         <div className="animate-fade-in-up">
                             <div className="flex justify-between items-center mb-6">
                                 <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                                    <span className="material-icons text-purple-600">account_tree</span>
+                                    <span className="material-icons text-teal-600">account_tree</span>
                                     الهيكل التنظيمي للمشروع
                                 </h2>
                                 <div className="text-sm text-gray-500 bg-white px-3 py-1 rounded shadow-sm">
@@ -1865,7 +1865,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, onlineUser
                                                             <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
                                                                 u.role === 'super_admin' ? 'bg-red-100 text-red-700' : 
                                                                 u.role === 'power_admin' ? 'bg-indigo-100 text-indigo-700' : 
-                                                                u.role === 'project_manager' ? 'bg-purple-100 text-purple-700' : 
+                                                                u.role === 'project_manager' ? 'bg-teal-100 text-teal-700' : 
                                                                 u.role === 'it_specialist' ? 'bg-cyan-100 text-cyan-700' : 
                                                                 u.role === 'hr_admin' ? 'bg-orange-100 text-orange-700' : 
                                                                 'bg-blue-100 text-blue-700'

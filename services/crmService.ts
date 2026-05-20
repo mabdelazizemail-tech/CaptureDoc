@@ -47,6 +47,7 @@ export interface Deal {
   stage: 'Lead' | 'Qualified' | 'Proposal' | 'Won' | 'Lost';
   contact_id?: string;
   company_id?: string;
+  line_of_business?: string;
   created_at?: string;
   company?: Company;
   contact?: Contact;

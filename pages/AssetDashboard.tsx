@@ -692,7 +692,7 @@ const AssetDashboard: React.FC<AssetDashboardProps> = ({ user }) => {
         const printWindow = window.open('', '_blank');
         if (!printWindow) return;
 
-        printWindow.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>تقرير الأصول - ${projectName}</title>
+        printWindow.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><meta name="description" content="تقرير تفصيلي لأصول المشروع"><meta property="og:title" content="تقرير الأصول"><meta property="og:description" content="تقرير تفصيلي لأصول المشروع"><title>تقرير الأصول - ${projectName}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Segoe UI', Tahoma, sans-serif; color: #1f2937; padding: 32px; direction: rtl; }
@@ -878,7 +878,7 @@ const AssetDashboard: React.FC<AssetDashboardProps> = ({ user }) => {
                     <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg flex items-center justify-between animate-fade-in-up flex-wrap gap-2">
                         <div className="flex items-center gap-2"><span className="font-bold text-blue-800 text-sm">تم تحديد {selectedAssetIds.size} عنصر</span></div>
                         <div className="flex gap-2">
-                            <button onClick={handleBulkExport} className="bg-purple-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-purple-700 flex items-center gap-1"><span className="material-icons text-sm">file_download</span> تصدير للملصقات (CSV)</button>
+                            <button onClick={handleBulkExport} className="bg-slate-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-slate-700 flex items-center gap-1"><span className="material-icons text-sm">file_download</span> تصدير للملصقات (CSV)</button>
                             {isItSpecialist && (
                                 <>
                                     <button onClick={handleBulkVerify} className="bg-green-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-green-700 flex items-center gap-1"><span className="material-icons text-sm">fact_check</span> تأكيد الفحص (Verify)</button>

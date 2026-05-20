@@ -43,15 +43,18 @@ export default function Tasks() {
           tasks.map((task) => (
             <li key={task.id} className={`px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors cursor-pointer ${task.status === 'Completed' ? 'opacity-60' : ''}`}>
               <div className="flex items-center" onClick={() => toggleStatus(task)}>
-                <input 
-                  type="checkbox" 
-                  checked={task.status === 'Completed'}
-                  readOnly
-                  className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer" 
-                />
-                <span className={`ml-4 text-sm ${task.status === 'Completed' ? 'text-gray-500 line-through' : 'text-gray-700 font-medium'}`}>
-                  {task.title}
-                </span>
+                <label className="flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={task.status === 'Completed'}
+                    readOnly
+                    aria-label={task.title}
+                    className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer" 
+                  />
+                  <span className={`ml-4 text-sm ${task.status === 'Completed' ? 'text-gray-500 line-through' : 'text-gray-700 font-medium'}`}>
+                    {task.title}
+                  </span>
+                </label>
               </div>
               <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2.5 py-1 rounded-md">
                 {task.due_date ? new Date(task.due_date).toLocaleDateString() : 'No Due Date'}

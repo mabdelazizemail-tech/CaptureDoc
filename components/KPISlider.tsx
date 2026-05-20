@@ -9,6 +9,7 @@ interface KPISliderProps {
 }
 
 const KPISlider: React.FC<KPISliderProps> = ({ label, value, onChange, icon, colorClass }) => {
+  const inputId = `kpi-input-${label.replace(/\s+/g, '-').toLowerCase()}`;
   return (
     <div className="bg-gray-50/50 p-5 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors">
       <div className="flex items-center justify-between mb-4">
@@ -16,12 +17,13 @@ const KPISlider: React.FC<KPISliderProps> = ({ label, value, onChange, icon, col
           <div className={`p-1.5 rounded bg-white shadow-sm ${colorClass}`}>
             <span className="material-icons text-lg block">{icon}</span>
           </div>
-          <span className="font-bold text-gray-700">{label}</span>
+          <label htmlFor={inputId} className="font-bold text-gray-700 cursor-pointer">{label}</label>
         </div>
         <span className={`text-xl font-bold ${colorClass}`}>{value}</span>
       </div>
       <div className="relative h-8 flex items-center">
         <input
+          id={inputId}
           type="range"
           min="1"
           max="10"

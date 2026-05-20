@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
 
 interface KPIEntry {
@@ -131,7 +131,7 @@ const HRKPIsDesktop: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
         <div className="space-y-6 animate-fade-in-up">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100 gap-4">
                 <div className="flex items-center gap-3">
-                    <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
+                    <div className="p-2 bg-teal-50 text-teal-600 rounded-lg">
                         <span className="material-icons">analytics</span>
                     </div>
                     <div>
@@ -161,7 +161,7 @@ const HRKPIsDesktop: React.FC<HRKPIsProps> = ({ user, selectedProjectId }) => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Stats Summary Area */}
                 <div className="lg:col-span-1 space-y-4">
-                    <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-6 rounded-2xl text-white shadow-lg">
+                    <div className="bg-gradient-to-br from-sky-500 to-teal-600 p-6 rounded-2xl text-white shadow-lg">
                         <h4 className="text-indigo-100 text-sm mb-1">متوسط الموقع</h4>
                         <div className="text-4xl font-black mb-4">
                             {(kpiData.reduce((acc, curr) => acc + parseFloat(calculateAverage(curr)), 0) / (kpiData.length || 1)).toFixed(1)}%

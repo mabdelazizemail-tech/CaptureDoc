@@ -28,6 +28,8 @@ export default function CRMDeals() {
   const [companyId, setCompanyId] = useState('');
   const [contactId, setContactId] = useState('');
   const [closeDate, setCloseDate] = useState('');
+  const [lobValue, setLobValue] = useState('');
+  const [lobOther, setLobOther] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -68,6 +70,8 @@ export default function CRMDeals() {
     setCompanyId('');
     setContactId('');
     setCloseDate('');
+    setLobValue('');
+    setLobOther('');
     setSaveError(null);
     setIsModalOpen(true);
   };
@@ -81,6 +85,18 @@ export default function CRMDeals() {
     setCompanyId(deal.company_id || '');
     setContactId(deal.contact_id || '');
     setCloseDate(deal.close_date || '');
+    const knownLobs = ['Software', 'Hardware', 'Digitization Services', 'Managed Print Service'];
+    const savedLob = deal.line_of_business || '';
+    if (knownLobs.includes(savedLob)) {
+      setLobValue(savedLob);
+      setLobOther('');
+    } else if (savedLob) {
+      setLobValue('Others');
+      setLobOther(savedLob);
+    } else {
+      setLobValue('');
+      setLobOther('');
+    }
     setSaveError(null);
     setIsModalOpen(true);
   };
@@ -129,7 +145,10 @@ export default function CRMDeals() {
       stage: dealStage,
       company_id: companyId || undefined,
       contact_id: contactId || undefined,
-      close_date: closeDate || undefined
+      close_date: closeDate || undefined,
+      line_of_business: lobValue === 'Others'
+        ? (lobOther.trim() || undefined)
+        : (lobValue || undefined)
     };
 
     if (editingDeal) {
@@ -230,6 +249,11 @@ export default function CRMDeals() {
                       </Link>
                     </div>
                     <p className="text-[11px] text-[var(--muted-foreground)] mt-1">{deal.company?.name || 'No Associated Account'}</p>
+                    {deal.line_of_business && (
+                      <span className="inline-block mt-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[color-mix(in_oklab,var(--primary)_12%,transparent)] text-[var(--primary)] uppercase tracking-wide">
+                        {deal.line_of_business}
+                      </span>
+                    )}
                     <div className="mt-3 flex items-center justify-between">
                       <div className="font-semibold text-sm font-mono text-[var(--foreground)]">
                         {deal.currency === 'USD' ? '$' : 'EGP '}{Number(deal.value || 0).toLocaleString()}
@@ -267,7 +291,7 @@ export default function CRMDeals() {
       {/* Add / Edit Deal Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setIsModalOpen(false)}>
-          <div className="bg-[var(--card)] rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border border-[var(--border)]" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[var(--card)] rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border border-[var(--border)] max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-[var(--border)] flex justify-between items-center">
               <div>
                 <h3 className="text-base font-semibold text-[var(--foreground)]">
@@ -289,7 +313,7 @@ export default function CRMDeals() {
               </div>
             )}
 
-            <form onSubmit={handleSaveDeal} className="p-6 space-y-4">
+            <form onSubmit={handleSaveDeal} className="p-6 space-y-4 overflow-y-auto flex-1">
               <div>
                 <label className="block text-xs font-medium text-[var(--muted-foreground)] mb-1.5">Deal Name *</label>
                 <input
@@ -351,6 +375,47 @@ export default function CRMDeals() {
                     className="w-full h-9 px-3 border border-[var(--border)] rounded-md bg-[var(--card)] text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
                   />
                 </div>
+              </div>
+
+              {/* Line of Business */}
+              <div>
+                <label className="block text-xs font-medium text-[var(--muted-foreground)] mb-1.5">Line of Business</label>
+                <div className="flex flex-wrap gap-2">
+                  {(['Software', 'Hardware', 'Digitization Services', 'Managed Print Service', 'Others'] as const).map(lob => (
+                    <button
+                      key={lob}
+                      type="button"
+                      onClick={() => { setLobValue(lob); if (lob !== 'Others') setLobOther(''); }}
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors cursor-pointer ${
+                        lobValue === lob
+                          ? 'bg-[var(--primary)] text-white border-[var(--primary)]'
+                          : 'border-[var(--border)] text-[var(--muted-foreground)] hover:border-[var(--primary)] hover:text-[var(--primary)] bg-transparent'
+                      }`}
+                    >
+                      {lob}
+                    </button>
+                  ))}
+                  {lobValue && (
+                    <button
+                      type="button"
+                      onClick={() => { setLobValue(''); setLobOther(''); }}
+                      className="px-2 py-1.5 rounded-md text-xs border border-dashed border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--destructive)] hover:border-[var(--destructive)] transition-colors cursor-pointer"
+                      title="Clear selection"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  )}
+                </div>
+                {lobValue === 'Others' && (
+                  <input
+                    type="text"
+                    value={lobOther}
+                    onChange={e => setLobOther(e.target.value)}
+                    placeholder="Describe the line of business..."
+                    className="mt-2 w-full h-9 px-3 border border-[var(--border)] rounded-md bg-[var(--card)] text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
+                    autoFocus
+                  />
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

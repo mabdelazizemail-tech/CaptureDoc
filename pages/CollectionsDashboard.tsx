@@ -212,7 +212,7 @@ const collectionStatusColor: Record<CollectionStatus, string> = {
   Overdue: 'bg-red-900/50 text-red-400',
   'Partially Paid': 'bg-orange-900/50 text-orange-300',
   Paid: 'bg-green-900/50 text-green-400',
-  Disputed: 'bg-purple-900/50 text-purple-300',
+  Disputed: 'bg-rose-900/50 text-rose-300',
 };
 
 const collectionStatusAr: Record<CollectionStatus, string> = {

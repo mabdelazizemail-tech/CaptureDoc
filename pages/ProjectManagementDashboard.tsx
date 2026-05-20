@@ -776,7 +776,7 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
                         <KpiCard title="إجمالي الإيرادات" value={`${fmt(totalRevenue, 0)} EGP`} sub={selectedMonth} color="from-emerald-50 to-emerald-100/60" icon="payments" />
                         <KpiCard title="إجمالي التكاليف" value={`${fmt(totalCost, 0)} EGP`} sub={`رواتب ${fmt(totalSalary)} + مصروفات ${fmt(totalExpenses + totalTickets)}`} color="from-red-50 to-red-100/60" icon="account_balance_wallet" />
                         <KpiCard title="Gross Profit" value={`${fmt(totalGP, 0)} EGP`} sub={`Margin: ${pct(totalGM)}`} color={totalGP >= 0 ? 'from-blue-50 to-blue-100/60' : 'from-orange-50 to-orange-100/60'} icon="trending_up" />
-                        <KpiCard title="حجم الإنجاز" value={`${fmt(totalActualVol)}`} sub={`${pct(totalAchievePct)} من المستهدف`} color="from-purple-50 to-purple-100/60" icon="fact_check" />
+                        <KpiCard title="حجم الإنجاز" value={`${fmt(totalActualVol)}`} sub={`${pct(totalAchievePct)} من المستهدف`} color="from-sky-50 to-sky-100/60" icon="fact_check" />
                     </div>
 
                     {/* Tabs */}
@@ -814,9 +814,9 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
                                         <div className={`text-xl font-bold ${totalGP >= 0 ? 'text-blue-800' : 'text-orange-700'}`}>{fmt(totalGP)} EGP</div>
                                         <div className="text-xs text-gray-400 mt-1">GM: {pct(totalGM)}</div>
                                     </div>
-                                    <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
+                                    <div className="p-4 bg-sky-50 rounded-xl border border-sky-100">
                                         <div className="text-xs text-gray-500 font-semibold mb-1">Cost per Unit</div>
-                                        <div className="text-xl font-bold text-purple-800">{fmt(totalCostPerUnit, 2)} EGP</div>
+                                        <div className="text-xl font-bold text-sky-800">{fmt(totalCostPerUnit, 2)} EGP</div>
                                         <div className="text-xs text-gray-400 mt-1">Revenue/Unit: {fmt(projectFinancials[0]?.revenuePerUnit || 0, 2)}</div>
                                     </div>
                                     <div className="p-4 bg-sky-50 rounded-xl border border-sky-100 relative group">
@@ -873,7 +873,7 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
                             {/* Section 2: Project Financial Performance Table */}
                             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
                                 <h3 className="text-base font-bold text-gray-700 mb-4 flex items-center gap-2">
-                                    <span className="material-icons text-purple-500 text-lg">table_chart</span>
+                                    <span className="material-icons text-sky-500 text-lg">table_chart</span>
                                     2️⃣ الأداء المالي لكل مشروع
                                 </h3>
                                 <div className="overflow-x-auto">
@@ -1030,9 +1030,9 @@ const ProjectManagementDashboard: React.FC<PMDashboardProps> = ({ user }) => {
                                                 <span className="text-sm text-gray-700">Revenue per Unit</span>
                                                 <span className="font-bold text-emerald-700">{projectFinancials.length > 0 ? fmt(projectFinancials[0].revenuePerUnit, 2) : '—'} EGP</span>
                                             </div>
-                                            <div className="flex justify-between p-3 bg-purple-50 rounded-lg border border-purple-100">
+                                            <div className="flex justify-between p-3 bg-sky-50 rounded-lg border border-sky-100">
                                                 <span className="text-sm text-gray-700">Contribution Margin / Unit</span>
-                                                <span className="font-bold text-purple-700">{projectFinancials.length > 0 ? fmt(projectFinancials[0].revenuePerUnit - totalCostPerUnit, 2) : '—'} EGP</span>
+                                                <span className="font-bold text-sky-700">{projectFinancials.length > 0 ? fmt(projectFinancials[0].revenuePerUnit - totalCostPerUnit, 2) : '—'} EGP</span>
                                             </div>
                                             <div className="flex justify-between p-3 bg-teal-50 rounded-lg border border-teal-100">
                                                 <span className="text-sm text-gray-700">Revenue per Employee</span>
