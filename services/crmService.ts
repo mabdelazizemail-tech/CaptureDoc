@@ -1,10 +1,27 @@
 import { supabase } from './supabaseClient';
+import { User } from './types';
+
+// CRM admin emails — these users can see ALL CRM data
+const CRM_ADMIN_EMAILS = [
+  'mohamed.abdelaziz@capture-doc.com',
+  'hossam.yazal@capture-doc.com',
+];
+
+export function isCRMAdmin(user: User): boolean {
+  const email = (user.email || user.username || '').toLowerCase();
+  return CRM_ADMIN_EMAILS.includes(email);
+}
+
+function getUserEmail(user: User): string {
+  return (user.email || user.username || '').toLowerCase();
+}
 
 export interface Company {
   id: string;
   name: string;
   industry?: string;
   website?: string;
+  created_by?: string;
   created_at?: string;
 }
 
@@ -35,6 +52,7 @@ export interface Contact {
   phone?: string;
   company_id?: string;
   notes?: string;
+  created_by?: string;
   created_at?: string;
   company?: Company;
 }
@@ -63,6 +81,7 @@ export interface Task {
   priority?: 'High' | 'Medium' | 'Low';
   contact_id?: string;
   deal_id?: string;
+  created_by?: string;
   created_at?: string;
   contact?: Contact;
   deal?: Deal;
@@ -70,47 +89,42 @@ export interface Task {
 
 // ─── GET ──────────────────────────────────────────────────────────────────────
 
-export const getLeads = async (): Promise<Lead[]> => {
-  const { data, error } = await supabase
-    .from('leads')
-    .select('*')
-    .order('created_at', { ascending: false });
+export const getLeads = async (user?: User): Promise<Lead[]> => {
+  let query = supabase.from('leads').select('*').order('created_at', { ascending: false });
+  if (user && !isCRMAdmin(user)) { query = query.eq('created_by', getUserEmail(user)); }
+  const { data, error } = await query;
   if (error) { console.error('Error fetching leads:', error); return []; }
   return data as Lead[];
 };
 
-export const getContacts = async (): Promise<Contact[]> => {
-  const { data, error } = await supabase
-    .from('contacts')
-    .select(`*, company:companies(id,name)`)
-    .order('created_at', { ascending: false });
+export const getContacts = async (user?: User): Promise<Contact[]> => {
+  let query = supabase.from('contacts').select(`*, company:companies(id,name)`).order('created_at', { ascending: false });
+  if (user && !isCRMAdmin(user)) { query = query.eq('created_by', getUserEmail(user)); }
+  const { data, error } = await query;
   if (error) { console.error('Error fetching contacts:', error); return []; }
   return data as Contact[];
 };
 
-export const getDeals = async (): Promise<Deal[]> => {
-  const { data, error } = await supabase
-    .from('deals')
-    .select(`*, company:companies(id,name), contact:contacts(id,first_name,last_name,email)`)
-    .order('created_at', { ascending: false });
+export const getDeals = async (user?: User): Promise<Deal[]> => {
+  let query = supabase.from('deals').select(`*, company:companies(id,name), contact:contacts(id,first_name,last_name,email)`).order('created_at', { ascending: false });
+  if (user && !isCRMAdmin(user)) { query = query.eq('created_by', getUserEmail(user)); }
+  const { data, error } = await query;
   if (error) { console.error('Error fetching deals:', error); return []; }
   return data as Deal[];
 };
 
-export const getTasks = async (): Promise<Task[]> => {
-  const { data, error } = await supabase
-    .from('tasks')
-    .select('*, contact:contacts(id,first_name,last_name), deal:deals(id,name)')
-    .order('due_date', { ascending: true });
+export const getTasks = async (user?: User): Promise<Task[]> => {
+  let query = supabase.from('tasks').select('*, contact:contacts(id,first_name,last_name), deal:deals(id,name)').order('due_date', { ascending: true });
+  if (user && !isCRMAdmin(user)) { query = query.eq('created_by', getUserEmail(user)); }
+  const { data, error } = await query;
   if (error) { console.error('Error fetching tasks:', error); return []; }
   return data as Task[];
 };
 
-export const getCompanies = async (): Promise<Company[]> => {
-  const { data, error } = await supabase
-    .from('companies')
-    .select('*')
-    .order('name', { ascending: true });
+export const getCompanies = async (user?: User): Promise<Company[]> => {
+  let query = supabase.from('companies').select('*').order('name', { ascending: true });
+  if (user && !isCRMAdmin(user)) { query = query.eq('created_by', getUserEmail(user)); }
+  const { data, error } = await query;
   if (error) { console.error('Error fetching companies:', error); return []; }
   return data as Company[];
 };

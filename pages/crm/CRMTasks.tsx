@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Calendar, User, KanbanSquare, Check, Plus,
+  Calendar, User as UserIcon, KanbanSquare, Check, Plus,
   X, AlertCircle, Trash2,
 } from 'lucide-react';
 import {
   getTasks, updateTaskStatus, createTask, deleteTask,
   getContacts, getDeals, Task, Contact, Deal,
 } from '../../services/crmService';
+import { User } from '../../services/types';
 
 const PRIORITIES: Task['priority'][] = ['High', 'Medium', 'Low'];
 
@@ -27,7 +28,7 @@ function dueDateBadge(dueDate?: string, done?: boolean) {
     : 'bg-[var(--accent)] text-[var(--accent-foreground)]';
 }
 
-export default function CRMTasks() {
+export default function CRMTasks({ user }: { user: User }) {
   const [tasks,    setTasks]    = useState<Task[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [deals,    setDeals]    = useState<Deal[]>([]);
@@ -48,7 +49,7 @@ export default function CRMTasks() {
 
   async function fetchAll() {
     setLoading(true);
-    const [t, c, d] = await Promise.all([getTasks(), getContacts(), getDeals()]);
+    const [t, c, d] = await Promise.all([getTasks(user), getContacts(user), getDeals(user)]);
     setTasks(t); setContacts(c); setDeals(d);
     setLoading(false);
   }
@@ -77,6 +78,7 @@ export default function CRMTasks() {
       status:     'Pending',
       contact_id: contactId || undefined,
       deal_id:    dealId    || undefined,
+      created_by: (user.email || user.username || '').toLowerCase(),
     });
     setSubmitting(false);
     if (error) { setSaveError((error as any).message || 'Failed to save'); return; }
@@ -182,7 +184,7 @@ export default function CRMTasks() {
                     <td className="py-3 px-3 text-xs">
                       {task.contact ? (
                         <Link to={`/crm/detail/contact/${task.contact_id}`} className="text-[var(--primary)] hover:underline flex items-center gap-1.5">
-                          <User className="size-3.5" />
+                          <UserIcon className="size-3.5" />
                           {task.contact.first_name} {task.contact.last_name}
                         </Link>
                       ) : <span className="text-[var(--muted-foreground)]">—</span>}

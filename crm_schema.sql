@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS companies (
   name TEXT NOT NULL,
   industry TEXT,
   website TEXT,
+  created_by TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS contacts (
   phone TEXT,
   company_id UUID REFERENCES companies(id) ON DELETE SET NULL,
   notes TEXT,
+  created_by TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -67,6 +69,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   priority TEXT DEFAULT 'Medium' CHECK (priority IN ('High', 'Medium', 'Low')),
   contact_id UUID REFERENCES contacts(id) ON DELETE CASCADE,
   deal_id UUID REFERENCES deals(id) ON DELETE CASCADE,
+  created_by TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

@@ -47,9 +47,9 @@ export default function CRMDeals({ user }: { user: User }) {
   async function fetchData() {
     setLoading(true);
     const [dealsData, companiesData, contactsData] = await Promise.all([
-      getDeals(),
-      getCompanies(),
-      getContacts()
+      getDeals(user),
+      getCompanies(user),
+      getContacts(user)
     ]);
     setDeals(dealsData);
     setCompanies(companiesData);
@@ -58,7 +58,7 @@ export default function CRMDeals({ user }: { user: User }) {
   }
 
   async function fetchDealsOnly() {
-    const data = await getDeals();
+    const data = await getDeals(user);
     setDeals(data);
   }
 
@@ -150,7 +150,7 @@ export default function CRMDeals({ user }: { user: User }) {
       line_of_business: lobValue === 'Others'
         ? (lobOther.trim() || undefined)
         : (lobValue || undefined),
-      ...(!editingDeal ? { created_by: user.name || user.username } : {}),
+      ...(!editingDeal ? { created_by: (user.email || user.username || '').toLowerCase() } : {}),
     };
 
     if (editingDeal) {

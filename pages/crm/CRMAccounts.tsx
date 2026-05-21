@@ -3,9 +3,9 @@ import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { Plus, X, Filter, SlidersHorizontal, ArrowUpRight, Edit, Trash2, AlertCircle, Search } from 'lucide-react';
 import { getCompanies, createCompany, updateCompany, deleteCompany, Company } from '../../services/crmService';
 import CRMRecordDetail from './CRMRecordDetail';
+import { User } from '../../services/types';
 
-
-export default function CRMAccounts() {
+export default function CRMAccounts({ user }: { user: User }) {
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -62,7 +62,7 @@ export default function CRMAccounts() {
 
   async function fetchAccounts() {
     setLoading(true);
-    const data = await getCompanies();
+    const data = await getCompanies(user);
     setAccounts(data);
     setLoading(false);
   }
@@ -96,7 +96,8 @@ export default function CRMAccounts() {
     const payload = {
       name: name.trim(),
       industry: industry.trim() || undefined,
-      website: website.trim() || undefined
+      website: website.trim() || undefined,
+      ...(!editingAccount ? { created_by: (user.email || user.username || '').toLowerCase() } : {}),
     };
 
     if (editingAccount) {

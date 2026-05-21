@@ -6,8 +6,9 @@ import {
   updateContact, deleteContact, Company
 } from '../../services/crmService';
 import CRMRecordDetail from './CRMRecordDetail';
+import { User } from '../../services/types';
 
-export default function CRMContacts() {
+export default function CRMContacts({ user }: { user: User }) {
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -73,8 +74,8 @@ export default function CRMContacts() {
   async function fetchData() {
     setLoading(true);
     const [contactsData, companiesData] = await Promise.all([
-      getContacts(),
-      getCompanies()
+      getContacts(user),
+      getCompanies(user)
     ]);
     setContacts(contactsData);
     setCompanies(companiesData);
@@ -112,7 +113,7 @@ export default function CRMContacts() {
     if (!newCompanyName.trim()) return;
 
     setSaveError(null);
-    const { data: company, error } = await createCompany({ name: newCompanyName.trim() });
+    const { data: company, error } = await createCompany({ name: newCompanyName.trim(), created_by: (user.email || user.username || '').toLowerCase() });
     if (error) {
       setSaveError(error.message || 'Failed to create company.');
       return;
@@ -141,7 +142,8 @@ export default function CRMContacts() {
       email: email.trim() || undefined,
       phone: phone.trim() || undefined,
       company_id: companyId || undefined,
-      notes: notes.trim() || undefined
+      notes: notes.trim() || undefined,
+      ...(!editingContact ? { created_by: (user.email || user.username || '').toLowerCase() } : {}),
     };
 
     if (editingContact) {

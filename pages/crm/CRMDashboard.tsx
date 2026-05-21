@@ -82,7 +82,7 @@ export default function CRMDashboard({ user }: Props) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([getLeads(), getDeals(), getTasks()])
+    Promise.all([getLeads(user), getDeals(user), getTasks(user)])
       .then(([l, d, t]) => {
         setLeads(l);
         setDeals(d);

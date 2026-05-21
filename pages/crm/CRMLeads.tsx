@@ -77,7 +77,7 @@ export default function CRMLeads({ user }: { user: User }) {
 
   async function fetchLeads() {
     setLoading(true);
-    const data = await getLeads();
+    const data = await getLeads(user);
     setLeads(data);
     setLoading(false);
   }
@@ -141,7 +141,7 @@ export default function CRMLeads({ user }: { user: User }) {
       phone:      phone.trim()    || undefined,
       source:     source          || undefined,
       status,
-      ...(!editingLead ? { created_by: user.name || user.username } : {}),
+      ...(!editingLead ? { created_by: (user.email || user.username || '').toLowerCase() } : {}),
     };
 
     if (editingLead) {
