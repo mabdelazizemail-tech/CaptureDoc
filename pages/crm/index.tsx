@@ -20,10 +20,10 @@ export default function CRMModule({ user, onLogout }: CRMModuleProps) {
     <Routes>
       <Route element={<CRMLayout user={user} onLogout={onLogout} />}>
         <Route path="/crm" element={<CRMDashboard user={user} />} />
-        <Route path="/crm/leads" element={<CRMLeads />} />
+        <Route path="/crm/leads" element={<CRMLeads user={user} />} />
         <Route path="/crm/accounts" element={<CRMAccounts />} />
         <Route path="/crm/contacts" element={<CRMContacts />} />
-        <Route path="/crm/deals" element={<CRMDeals />} />
+        <Route path="/crm/deals" element={<CRMDeals user={user} />} />
         <Route path="/crm/tasks" element={<CRMTasks />} />
         <Route path="/crm/detail/:type/:id" element={<CRMRecordDetail />} />
       </Route>

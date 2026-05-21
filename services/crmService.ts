@@ -22,6 +22,7 @@ export interface Lead {
   source?: string;   // B-003 fix: was missing from type
   value?: number;
   notes?: string;
+  created_by?: string;
   created_at?: string;
 }
 
@@ -48,6 +49,7 @@ export interface Deal {
   contact_id?: string;
   company_id?: string;
   line_of_business?: string;
+  created_by?: string;
   created_at?: string;
   company?: Company;
   contact?: Contact;

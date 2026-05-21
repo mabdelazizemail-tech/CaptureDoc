@@ -7,6 +7,7 @@ import {
 import { getLeads, createLead, deleteLead, updateLead, Lead } from '../../services/crmService';
 import SmartLookup, { SmartLookupResult } from '../../components/SmartLookup';
 import CRMRecordDetail from './CRMRecordDetail';
+import { User } from '../../services/types';
 
 const statusStyles: Record<string, string> = {
   New:        'bg-[color-mix(in_oklab,var(--info)_10%,transparent)] text-[var(--info)] border-[color-mix(in_oklab,var(--info)_20%,transparent)]',
@@ -19,7 +20,7 @@ const statusStyles: Record<string, string> = {
 const STATUSES: Lead['status'][] = ['New', 'Contacted', 'Qualified', 'Lost'];
 const SOURCES  = ['Website', 'Referral', 'LinkedIn', 'Trade Show', 'Cold Call', 'Webinar', 'Inbound Email'];
 
-export default function CRMLeads() {
+export default function CRMLeads({ user }: { user: User }) {
   const navigate   = useNavigate();
   const location   = useLocation();
 
@@ -140,6 +141,7 @@ export default function CRMLeads() {
       phone:      phone.trim()    || undefined,
       source:     source          || undefined,
       status,
+      ...(!editingLead ? { created_by: user.name || user.username } : {}),
     };
 
     if (editingLead) {
@@ -291,7 +293,7 @@ export default function CRMLeads() {
                     style={{ accentColor: 'var(--primary)' }}
                   />
                 </th>
-                {['Lead Name', 'Company', 'Email', 'Phone', 'Lead Source', 'Status', 'Actions'].map((h) => (
+                {['Lead Name', 'Company', 'Email', 'Phone', 'Lead Source', 'Status', 'Created By', 'Actions'].map((h) => (
                   <th
                     key={h}
                     className="py-3 px-3 text-left text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)] sticky top-0 bg-[color-mix(in_oklab,var(--secondary)_30%,var(--card))] z-10 border-b border-[var(--border)]"
@@ -304,13 +306,13 @@ export default function CRMLeads() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="py-16 text-center text-sm text-[var(--muted-foreground)]">
+                  <td colSpan={9} className="py-16 text-center text-sm text-[var(--muted-foreground)]">
                     Loading leads…
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-16 text-center text-sm text-[var(--muted-foreground)]">
+                  <td colSpan={9} className="py-16 text-center text-sm text-[var(--muted-foreground)]">
                     No leads found.{' '}
                     <button
                       onClick={openCreateModal}
@@ -375,6 +377,9 @@ export default function CRMLeads() {
                       <div className={`inline-flex items-center rounded-md border px-2.5 py-0.5 text-[11px] font-medium ${statusStyles[lead.status] || statusStyles['Lost']}`}>
                         {lead.status}
                       </div>
+                    </td>
+                    <td className="text-sm text-[var(--muted-foreground)] py-2.5 px-3">
+                      {lead.created_by || '—'}
                     </td>
                     <td className="py-2.5 px-3">
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

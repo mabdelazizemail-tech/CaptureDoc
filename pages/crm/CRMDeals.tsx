@@ -5,10 +5,11 @@ import {
   getDeals, updateDealStage, updateDeal, deleteDeal, Deal,
   getCompanies, getContacts, Company, Contact, createDeal
 } from '../../services/crmService';
+import { User } from '../../services/types';
 
 const STAGES: Deal['stage'][] = ['Lead', 'Qualified', 'Proposal', 'Won', 'Lost'];
 
-export default function CRMDeals() {
+export default function CRMDeals({ user }: { user: User }) {
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -148,7 +149,8 @@ export default function CRMDeals() {
       close_date: closeDate || undefined,
       line_of_business: lobValue === 'Others'
         ? (lobOther.trim() || undefined)
-        : (lobValue || undefined)
+        : (lobValue || undefined),
+      ...(!editingDeal ? { created_by: user.name || user.username } : {}),
     };
 
     if (editingDeal) {
@@ -253,6 +255,11 @@ export default function CRMDeals() {
                       <span className="inline-block mt-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[color-mix(in_oklab,var(--primary)_12%,transparent)] text-[var(--primary)] uppercase tracking-wide">
                         {deal.line_of_business}
                       </span>
+                    )}
+                    {deal.created_by && (
+                      <p className="text-[10px] text-[var(--muted-foreground)] mt-1.5 flex items-center gap-1">
+                        <span className="opacity-60">by</span> {deal.created_by}
+                      </p>
                     )}
                     <div className="mt-3 flex items-center justify-between">
                       <div className="font-semibold text-sm font-mono text-[var(--foreground)]">
