@@ -89,44 +89,41 @@ export interface Task {
 
 // ─── GET ──────────────────────────────────────────────────────────────────────
 
+// Client-side ownership filter — works even if DB column doesn't exist yet
+function filterOwned<T extends { created_by?: string }>(rows: T[], user?: User): T[] {
+  if (!user || isCRMAdmin(user)) return rows;
+  const email = getUserEmail(user);
+  return rows.filter(r => r.created_by === email);
+}
+
 export const getLeads = async (user?: User): Promise<Lead[]> => {
-  let query = supabase.from('leads').select('*').order('created_at', { ascending: false });
-  if (user && !isCRMAdmin(user)) { query = query.eq('created_by', getUserEmail(user)); }
-  const { data, error } = await query;
+  const { data, error } = await supabase.from('leads').select('*').order('created_at', { ascending: false });
   if (error) { console.error('Error fetching leads:', error); return []; }
-  return data as Lead[];
+  return filterOwned(data as Lead[], user);
 };
 
 export const getContacts = async (user?: User): Promise<Contact[]> => {
-  let query = supabase.from('contacts').select(`*, company:companies(id,name)`).order('created_at', { ascending: false });
-  if (user && !isCRMAdmin(user)) { query = query.eq('created_by', getUserEmail(user)); }
-  const { data, error } = await query;
+  const { data, error } = await supabase.from('contacts').select(`*, company:companies(id,name)`).order('created_at', { ascending: false });
   if (error) { console.error('Error fetching contacts:', error); return []; }
-  return data as Contact[];
+  return filterOwned(data as Contact[], user);
 };
 
 export const getDeals = async (user?: User): Promise<Deal[]> => {
-  let query = supabase.from('deals').select(`*, company:companies(id,name), contact:contacts(id,first_name,last_name,email)`).order('created_at', { ascending: false });
-  if (user && !isCRMAdmin(user)) { query = query.eq('created_by', getUserEmail(user)); }
-  const { data, error } = await query;
+  const { data, error } = await supabase.from('deals').select(`*, company:companies(id,name), contact:contacts(id,first_name,last_name,email)`).order('created_at', { ascending: false });
   if (error) { console.error('Error fetching deals:', error); return []; }
-  return data as Deal[];
+  return filterOwned(data as Deal[], user);
 };
 
 export const getTasks = async (user?: User): Promise<Task[]> => {
-  let query = supabase.from('tasks').select('*, contact:contacts(id,first_name,last_name), deal:deals(id,name)').order('due_date', { ascending: true });
-  if (user && !isCRMAdmin(user)) { query = query.eq('created_by', getUserEmail(user)); }
-  const { data, error } = await query;
+  const { data, error } = await supabase.from('tasks').select('*, contact:contacts(id,first_name,last_name), deal:deals(id,name)').order('due_date', { ascending: true });
   if (error) { console.error('Error fetching tasks:', error); return []; }
-  return data as Task[];
+  return filterOwned(data as Task[], user);
 };
 
 export const getCompanies = async (user?: User): Promise<Company[]> => {
-  let query = supabase.from('companies').select('*').order('name', { ascending: true });
-  if (user && !isCRMAdmin(user)) { query = query.eq('created_by', getUserEmail(user)); }
-  const { data, error } = await query;
+  const { data, error } = await supabase.from('companies').select('*').order('name', { ascending: true });
   if (error) { console.error('Error fetching companies:', error); return []; }
-  return data as Company[];
+  return filterOwned(data as Company[], user);
 };
 
 // ─── DETAIL ───────────────────────────────────────────────────────────────────
