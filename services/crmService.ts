@@ -173,21 +173,31 @@ export const getContactDeals = async (contactId: string): Promise<Deal[]> => {
 
 // ─── CREATE ───────────────────────────────────────────────────────────────────
 
+// Resilient insert: if DB rejects created_by (column missing), retry without it
+async function resilientInsert<T = any>(table: string, row: Record<string, any>, selectQuery = '*') {
+  const result = await supabase.from(table).insert(row).select(selectQuery).single<T>();
+  if (result.error?.message?.includes('created_by')) {
+    const { created_by, ...rest } = row;
+    return supabase.from(table).insert(rest).select(selectQuery).single<T>();
+  }
+  return result;
+}
+
 export const createLead = async (lead: Omit<Lead, 'id' | 'created_at'>) =>
-  supabase.from('leads').insert(lead).select().single();
+  resilientInsert('leads', lead);
 
 export const createCompany = async (company: Omit<Company, 'id' | 'created_at'>) =>
-  supabase.from('companies').insert(company).select().single();
+  resilientInsert('companies', company);
 
 export const createContact = async (contact: Omit<Contact, 'id' | 'created_at' | 'company'>) =>
-  supabase.from('contacts').insert(contact).select(`*, company:companies(id,name)`).single();
+  resilientInsert('contacts', contact, `*, company:companies(id,name)`);
 
 export const createDeal = async (deal: Omit<Deal, 'id' | 'created_at' | 'company' | 'contact'>) =>
-  supabase.from('deals').insert(deal).select(`*, company:companies(id,name)`).single();
+  resilientInsert('deals', deal, `*, company:companies(id,name)`);
 
 // B-002 fix: createTask was missing entirely
 export const createTask = async (task: Omit<Task, 'id' | 'created_at' | 'contact' | 'deal'>) =>
-  supabase.from('tasks').insert(task).select().single();
+  resilientInsert('tasks', task);
 
 // ─── UPDATE ───────────────────────────────────────────────────────────────────
 
