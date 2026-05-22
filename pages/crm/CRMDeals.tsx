@@ -34,6 +34,8 @@ export default function CRMDeals({ user }: { user: User }) {
   const [closeDate, setCloseDate] = useState('');
   const [lobValue, setLobValue] = useState('');
   const [lobOther, setLobOther] = useState('');
+  const [channelType, setChannelType] = useState<'Direct' | 'Indirect'>('Direct');
+  const [channelName, setChannelName] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -76,6 +78,8 @@ export default function CRMDeals({ user }: { user: User }) {
     setCloseDate('');
     setLobValue('');
     setLobOther('');
+    setChannelType('Direct');
+    setChannelName('');
     setSaveError(null);
     setIsModalOpen(true);
   };
@@ -89,6 +93,8 @@ export default function CRMDeals({ user }: { user: User }) {
     setCompanyId(deal.company_id || '');
     setContactId(deal.contact_id || '');
     setCloseDate(deal.close_date || '');
+    setChannelType(deal.channel_type || 'Direct');
+    setChannelName(deal.channel_name || '');
     const knownLobs = ['Software', 'Hardware', 'Digitization Services', 'Managed Print Service'];
     const savedLob = deal.line_of_business || '';
     if (knownLobs.includes(savedLob)) {
@@ -104,6 +110,8 @@ export default function CRMDeals({ user }: { user: User }) {
     setSaveError(null);
     setIsModalOpen(true);
   };
+
+  const INDIRECT_CHANNELS = ['Xerox', 'Ricoh', 'Canon', 'Konica Minolta', 'HP', 'Epson', 'Brother', 'Kyocera', 'Sharp', 'Toshiba'];
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
     setDraggedDealId(id);
@@ -153,6 +161,8 @@ export default function CRMDeals({ user }: { user: User }) {
       line_of_business: lobValue === 'Others'
         ? (lobOther.trim() || undefined)
         : (lobValue || undefined),
+      channel_type: channelType,
+      channel_name: channelType === 'Indirect' ? (channelName || undefined) : undefined,
       ...(!editingDeal ? { created_by: (user.email || user.username || '').toLowerCase() } : {}),
     };
 
@@ -277,6 +287,15 @@ export default function CRMDeals({ user }: { user: User }) {
                       <p className="text-[10px] text-[var(--muted-foreground)] mt-1.5 flex items-center gap-1">
                         <span className="opacity-60">by</span> {deal.created_by}
                       </p>
+                    )}
+                    {deal.channel_type && (
+                      <span className={`inline-block mt-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide ${
+                        deal.channel_type === 'Direct'
+                          ? 'bg-[color-mix(in_oklab,var(--success)_12%,transparent)] text-[var(--success)]'
+                          : 'bg-[color-mix(in_oklab,var(--warning,#f59e0b)_12%,transparent)] text-[var(--warning,#f59e0b)]'
+                      }`}>
+                        {deal.channel_type}{deal.channel_type === 'Indirect' && deal.channel_name ? ` · ${deal.channel_name}` : ''}
+                      </span>
                     )}
                     <div className="mt-3 flex items-center justify-between">
                       <div className="font-semibold text-sm font-mono text-[var(--foreground)]">
@@ -439,6 +458,41 @@ export default function CRMDeals({ user }: { user: User }) {
                     className="mt-2 w-full h-9 px-3 border border-[var(--border)] rounded-md bg-[var(--card)] text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
                     autoFocus
                   />
+                )}
+              </div>
+
+              {/* Channel Type */}
+              <div>
+                <label className="block text-xs font-medium text-[var(--muted-foreground)] mb-1.5">Channel Type</label>
+                <div className="flex items-center gap-3">
+                  {(['Direct', 'Indirect'] as const).map(ct => (
+                    <label key={ct} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="channelType"
+                        value={ct}
+                        checked={channelType === ct}
+                        onChange={() => { setChannelType(ct); if (ct === 'Direct') setChannelName(''); }}
+                        className="cursor-pointer"
+                        style={{ accentColor: 'var(--primary)' }}
+                      />
+                      <span className={`text-sm font-medium ${
+                        channelType === ct ? 'text-[var(--foreground)]' : 'text-[var(--muted-foreground)]'
+                      }`}>{ct}</span>
+                    </label>
+                  ))}
+                </div>
+                {channelType === 'Indirect' && (
+                  <select
+                    value={channelName}
+                    onChange={(e) => setChannelName(e.target.value)}
+                    className="mt-2 w-full h-9 px-3 border border-[var(--border)] rounded-md bg-[var(--card)] text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
+                  >
+                    <option value="">Select Channel Partner...</option>
+                    {INDIRECT_CHANNELS.map(ch => (
+                      <option key={ch} value={ch}>{ch}</option>
+                    ))}
+                  </select>
                 )}
               </div>
 

@@ -67,6 +67,8 @@ export interface Deal {
   contact_id?: string;
   company_id?: string;
   line_of_business?: string;
+  channel_type?: 'Direct' | 'Indirect';
+  channel_name?: string;
   created_by?: string;
   created_at?: string;
   company?: Company;
