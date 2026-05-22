@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { Plus, X, Filter, SlidersHorizontal, ArrowUpRight, Edit, Trash2, AlertCircle, Search } from 'lucide-react';
-import { getCompanies, createCompany, updateCompany, deleteCompany, Company } from '../../services/crmService';
+import { getCompanies, createCompany, updateCompany, deleteCompany, Company, isCRMAdmin } from '../../services/crmService';
 import CRMRecordDetail from './CRMRecordDetail';
 import { User } from '../../services/types';
 
@@ -29,7 +29,10 @@ export default function CRMAccounts({ user }: { user: User }) {
 
   // Filters
   const [filterIndustry, setFilterIndustry] = useState<string>('All');
+  const [filterCreatedBy, setFilterCreatedBy] = useState<string>('All');
   const [query, setQuery] = useState('');
+
+  const isAdmin = isCRMAdmin(user);
 
   useEffect(() => {
     fetchAccounts();
@@ -154,6 +157,7 @@ export default function CRMAccounts({ user }: { user: User }) {
 
   const filteredAccounts = accounts.filter(a => {
     if (filterIndustry !== 'All' && a.industry !== filterIndustry) return false;
+    if (filterCreatedBy !== 'All' && a.created_by !== filterCreatedBy) return false;
     if (query.trim() !== '') {
       const matchQ = a.name.toLowerCase().includes(query.toLowerCase()) ||
         (a.industry || '').toLowerCase().includes(query.toLowerCase()) ||
@@ -165,6 +169,7 @@ export default function CRMAccounts({ user }: { user: User }) {
 
   // Extract unique industries for filter dropdown
   const industries = Array.from(new Set(accounts.map(a => a.industry).filter(Boolean)));
+  const creators = Array.from(new Set(accounts.map(a => a.created_by).filter(Boolean))) as string[];
 
   const allChecked = selected.size === filteredAccounts.length && filteredAccounts.length > 0;
   const toggleAll  = () => setSelected(allChecked ? new Set() : new Set(filteredAccounts.map((a) => a.id)));
@@ -240,15 +245,16 @@ export default function CRMAccounts({ user }: { user: User }) {
                   <th className="px-6 py-3 sticky top-0 bg-[color-mix(in_oklab,var(--secondary)_30%,var(--card))] z-10 border-b border-[var(--border)]">Account Name</th>
                   <th className="px-6 py-3 sticky top-0 bg-[color-mix(in_oklab,var(--secondary)_30%,var(--card))] z-10 border-b border-[var(--border)]">Industry</th>
                   <th className="px-6 py-3 sticky top-0 bg-[color-mix(in_oklab,var(--secondary)_30%,var(--card))] z-10 border-b border-[var(--border)]">Website</th>
+                  <th className="px-6 py-3 sticky top-0 bg-[color-mix(in_oklab,var(--secondary)_30%,var(--card))] z-10 border-b border-[var(--border)]">Created By</th>
                   <th className="px-6 py-3 sticky top-0 bg-[color-mix(in_oklab,var(--secondary)_30%,var(--card))] z-10 border-b border-[var(--border)]">Created At</th>
                   <th className="px-6 py-3 w-32 sticky top-0 bg-[color-mix(in_oklab,var(--secondary)_30%,var(--card))] z-10 border-b border-[var(--border)]"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
                 {loading ? (
-                  <tr><td colSpan={6} className="px-6 py-12 text-center text-[var(--muted-foreground)]">Loading accounts...</td></tr>
+                  <tr><td colSpan={7} className="px-6 py-12 text-center text-[var(--muted-foreground)]">Loading accounts...</td></tr>
                 ) : filteredAccounts.length === 0 ? (
-                  <tr><td colSpan={6} className="px-6 py-12 text-center text-[var(--muted-foreground)]">No accounts match the filters.</td></tr>
+                  <tr><td colSpan={7} className="px-6 py-12 text-center text-[var(--muted-foreground)]">No accounts match the filters.</td></tr>
                 ) : (
                   filteredAccounts.map((account) => {
                     const isSelected = selected.has(account.id);
@@ -279,6 +285,9 @@ export default function CRMAccounts({ user }: { user: User }) {
                               {account.website}
                             </a>
                           ) : '—'}
+                        </td>
+                        <td className="px-6 py-3 text-[var(--muted-foreground)]">
+                          {account.created_by || '—'}
                         </td>
                         <td className="px-6 py-3 text-[var(--muted-foreground)]">
                           {account.created_at ? new Date(account.created_at).toLocaleDateString() : '—'}
@@ -350,6 +359,21 @@ export default function CRMAccounts({ user }: { user: User }) {
                 ))}
               </select>
             </div>
+            {isAdmin && (
+              <div>
+                <label className="block text-xs font-semibold text-[var(--muted-foreground)] uppercase mb-2">Created By</label>
+                <select
+                  value={filterCreatedBy}
+                  onChange={(e) => setFilterCreatedBy(e.target.value)}
+                  className="w-full h-9 px-3 border border-[var(--border)] rounded-md bg-[var(--card)] text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
+                >
+                  <option value="All">All Users</option>
+                  {creators.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
       )}

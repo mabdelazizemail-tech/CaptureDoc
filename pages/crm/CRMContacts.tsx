@@ -3,7 +3,7 @@ import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { Plus, X, Filter, SlidersHorizontal, ArrowUpRight, Edit, Trash2, AlertCircle, Search } from 'lucide-react';
 import {
   getContacts, Contact, getCompanies, createCompany, createContact,
-  updateContact, deleteContact, Company
+  updateContact, deleteContact, Company, isCRMAdmin
 } from '../../services/crmService';
 import CRMRecordDetail from './CRMRecordDetail';
 import { User } from '../../services/types';
@@ -40,7 +40,10 @@ export default function CRMContacts({ user }: { user: User }) {
 
   // Filters
   const [filterCompany, setFilterCompany] = useState<string>('All');
+  const [filterCreatedBy, setFilterCreatedBy] = useState<string>('All');
   const [query, setQuery] = useState('');
+
+  const isAdmin = isCRMAdmin(user);
 
   useEffect(() => {
     fetchData();
@@ -200,6 +203,7 @@ export default function CRMContacts({ user }: { user: User }) {
 
   const filteredContacts = contacts.filter(c => {
     if (filterCompany !== 'All' && c.company_id !== filterCompany) return false;
+    if (filterCreatedBy !== 'All' && c.created_by !== filterCreatedBy) return false;
     if (query.trim() !== '') {
       const fullName = `${c.first_name} ${c.last_name}`.toLowerCase();
       const matchQ = fullName.includes(query.toLowerCase()) ||
@@ -209,6 +213,8 @@ export default function CRMContacts({ user }: { user: User }) {
     }
     return true;
   });
+
+  const creators = Array.from(new Set(contacts.map(c => c.created_by).filter(Boolean))) as string[];
 
   const allChecked = selected.size === filteredContacts.length && filteredContacts.length > 0;
   const toggleAll  = () => setSelected(allChecked ? new Set() : new Set(filteredContacts.map((c) => c.id)));
@@ -285,14 +291,15 @@ export default function CRMContacts({ user }: { user: User }) {
                   <th className="px-6 py-3 sticky top-0 bg-[color-mix(in_oklab,var(--secondary)_30%,var(--card))] z-10 border-b border-[var(--border)]">Account</th>
                   <th className="px-6 py-3 sticky top-0 bg-[color-mix(in_oklab,var(--secondary)_30%,var(--card))] z-10 border-b border-[var(--border)]">Email</th>
                   <th className="px-6 py-3 sticky top-0 bg-[color-mix(in_oklab,var(--secondary)_30%,var(--card))] z-10 border-b border-[var(--border)]">Phone</th>
+                  <th className="px-6 py-3 sticky top-0 bg-[color-mix(in_oklab,var(--secondary)_30%,var(--card))] z-10 border-b border-[var(--border)]">Created By</th>
                   <th className="px-6 py-3 w-32 sticky top-0 bg-[color-mix(in_oklab,var(--secondary)_30%,var(--card))] z-10 border-b border-[var(--border)]"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
                 {loading ? (
-                  <tr><td colSpan={6} className="px-6 py-12 text-center text-[var(--muted-foreground)]">Loading contacts...</td></tr>
+                  <tr><td colSpan={7} className="px-6 py-12 text-center text-[var(--muted-foreground)]">Loading contacts...</td></tr>
                 ) : filteredContacts.length === 0 ? (
-                  <tr><td colSpan={6} className="px-6 py-12 text-center text-[var(--muted-foreground)]">No contacts match the filters.</td></tr>
+                  <tr><td colSpan={7} className="px-6 py-12 text-center text-[var(--muted-foreground)]">No contacts match the filters.</td></tr>
                 ) : (
                   filteredContacts.map((contact) => {
                     const isSelected = selected.has(contact.id);
@@ -330,6 +337,9 @@ export default function CRMContacts({ user }: { user: User }) {
                         </td>
                         <td className="px-6 py-3 text-[var(--muted-foreground)]">
                           {contact.phone || '—'}
+                        </td>
+                        <td className="px-6 py-3 text-[var(--muted-foreground)]">
+                          {contact.created_by || '—'}
                         </td>
                         <td className="px-6 py-3 text-center">
                           <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
@@ -397,6 +407,21 @@ export default function CRMContacts({ user }: { user: User }) {
                 ))}
               </select>
             </div>
+            {isAdmin && (
+              <div>
+                <label className="block text-xs font-semibold text-[var(--muted-foreground)] uppercase mb-2">Created By</label>
+                <select
+                  value={filterCreatedBy}
+                  onChange={(e) => setFilterCreatedBy(e.target.value)}
+                  className="w-full h-9 px-3 border border-[var(--border)] rounded-md bg-[var(--card)] text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
+                >
+                  <option value="All">All Users</option>
+                  {creators.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
       )}

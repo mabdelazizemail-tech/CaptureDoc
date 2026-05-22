@@ -3,7 +3,7 @@ import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { Plus, X, ArrowUpRight, Edit, Trash2, AlertCircle } from 'lucide-react';
 import {
   getDeals, updateDealStage, updateDeal, deleteDeal, Deal,
-  getCompanies, getContacts, Company, Contact, createDeal
+  getCompanies, getContacts, Company, Contact, createDeal, isCRMAdmin
 } from '../../services/crmService';
 import { User } from '../../services/types';
 
@@ -18,6 +18,9 @@ export default function CRMDeals({ user }: { user: User }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
+  const [filterCreatedBy, setFilterCreatedBy] = useState('All');
+
+  const isAdmin = isCRMAdmin(user);
 
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -196,19 +199,33 @@ export default function CRMDeals({ user }: { user: User }) {
             Drag and drop deals between stages to update status.
           </p>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="inline-flex items-center justify-center cursor-pointer transition-colors bg-[var(--primary)] text-white hover:bg-[color-mix(in_oklab,var(--primary)_90%,transparent)] rounded-md px-3 text-xs h-9 gap-1.5 font-medium"
-        >
-          <Plus className="size-4" />
-          Create Deal
-        </button>
+        <div className="flex items-center gap-3">
+          {isAdmin && (
+            <select
+              value={filterCreatedBy}
+              onChange={(e) => setFilterCreatedBy(e.target.value)}
+              className="h-9 px-3 border border-[var(--border)] rounded-md bg-[var(--card)] text-xs text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)] font-medium"
+            >
+              <option value="All">All Users</option>
+              {(Array.from(new Set(deals.map(d => d.created_by).filter(Boolean))) as string[]).map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          )}
+          <button
+            onClick={openCreateModal}
+            className="inline-flex items-center justify-center cursor-pointer transition-colors bg-[var(--primary)] text-white hover:bg-[color-mix(in_oklab,var(--primary)_90%,transparent)] rounded-md px-3 text-xs h-9 gap-1.5 font-medium"
+          >
+            <Plus className="size-4" />
+            Create Deal
+          </button>
+        </div>
       </div>
 
       {/* Kanban Board */}
       <div className="flex-1 flex space-x-4 overflow-x-auto pb-4 items-stretch">
         {STAGES.map((stage) => {
-          const stageDeals = deals.filter(d => d.stage === stage);
+          const stageDeals = deals.filter(d => d.stage === stage && (filterCreatedBy === 'All' || d.created_by === filterCreatedBy));
           const totalVal = stageDeals.reduce((sum, d) => sum + (d.value || 0), 0);
 
           return (

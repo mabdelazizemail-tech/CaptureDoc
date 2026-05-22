@@ -4,7 +4,7 @@ import {
   Plus, Search, Filter, Columns3, Download,
   X, ChevronDown, AlertCircle, Edit, Trash2, Check,
 } from 'lucide-react';
-import { getLeads, createLead, deleteLead, updateLead, Lead } from '../../services/crmService';
+import { getLeads, createLead, deleteLead, updateLead, Lead, isCRMAdmin } from '../../services/crmService';
 import SmartLookup, { SmartLookupResult } from '../../components/SmartLookup';
 import CRMRecordDetail from './CRMRecordDetail';
 import { User } from '../../services/types';
@@ -30,7 +30,10 @@ export default function CRMLeads({ user }: { user: User }) {
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [query, setQuery]         = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
+  const [filterCreatedBy, setFilterCreatedBy] = useState('All');
   const [selected, setSelected]   = useState<Set<string>>(new Set());
+
+  const isAdmin = isCRMAdmin(user);
 
   // Sliding Drawer states
   const [activeDetailId, setActiveDetailId] = useState<string | null>(null);
@@ -205,8 +208,11 @@ export default function CRMLeads({ user }: { user: User }) {
       || (l.company || '').toLowerCase().includes(query.toLowerCase())
       || (l.email || '').toLowerCase().includes(query.toLowerCase());
     const matchS = filterStatus === 'All' || l.status === filterStatus;
-    return matchQ && matchS;
+    const matchC = filterCreatedBy === 'All' || l.created_by === filterCreatedBy;
+    return matchQ && matchS && matchC;
   });
+
+  const creators = Array.from(new Set(leads.map(l => l.created_by).filter(Boolean))) as string[];
 
   const allChecked = selected.size === filtered.length && filtered.length > 0;
   const toggleAll  = () => setSelected(allChecked ? new Set() : new Set(filtered.map((l) => l.id)));
@@ -275,6 +281,21 @@ export default function CRMLeads({ user }: { user: User }) {
                 {st}
               </button>
             ))}
+            {isAdmin && (
+              <>
+                <div className="w-px h-5 bg-[var(--border)] mx-1" />
+                <select
+                  value={filterCreatedBy}
+                  onChange={(e) => setFilterCreatedBy(e.target.value)}
+                  className="h-8 px-2 border border-[var(--border)] rounded-md bg-[var(--card)] text-xs text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
+                >
+                  <option value="All">All Users</option>
+                  {creators.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </>
+            )}
           </div>
         </div>
 
