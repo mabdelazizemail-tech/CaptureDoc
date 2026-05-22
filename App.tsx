@@ -15,6 +15,7 @@ import JournalEntriesDashboard from './pages/JournalEntriesDashboard';
 import Sidebar from './components/Sidebar';
 import { User } from './services/types';
 import { supabase } from './services/supabaseClient';
+import { StorageService } from './services/storage';
 import CRMModule from './pages/crm';
 
 const FINANCE_ONLY_USERS = ['taher.mohamed@pbkadvisory.com'];
@@ -166,18 +167,51 @@ const AppShell: React.FC<{
   );
 };
 
+const SESSION_KEY = 'capture_flow_user';
+
 const App: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const saved = localStorage.getItem(SESSION_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [isRestoringSession, setIsRestoringSession] = useState(!user);
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Restore Supabase auth session on mount
+  useEffect(() => {
+    if (user) { setIsRestoringSession(false); return; }
+
+    let cancelled = false;
+    const restoreSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user && !cancelled) {
+          const profile = await StorageService.getUserProfile(session.user.id);
+          if (profile && !cancelled) {
+            localStorage.setItem(SESSION_KEY, JSON.stringify(profile));
+            setUser(profile);
+          }
+        }
+      } catch (err) {
+        console.error('Session restore failed:', err);
+      } finally {
+        if (!cancelled) setIsRestoringSession(false);
+      }
+    };
+    restoreSession();
+    return () => { cancelled = true; };
+  }, []);
+
   // Redirect to login on logout
   useEffect(() => {
-    if (!user && location.pathname !== '/login') {
+    if (!isRestoringSession && !user && location.pathname !== '/login') {
       navigate('/login', { replace: true });
     }
-  }, [user]);
+  }, [user, isRestoringSession]);
 
   // Presence Tracking
   useEffect(() => {
@@ -211,14 +245,28 @@ const App: React.FC = () => {
   }, [user]);
 
   const handleLogin = (loggedInUser: User) => {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(loggedInUser));
     setUser(loggedInUser);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem('selected_workspace');
+    try { await supabase.auth.signOut(); } catch {}
     setUser(null);
     setOnlineUsers(new Set());
   };
+
+  if (isRestoringSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#f0f3f6]">
+        <div className="flex flex-col items-center gap-3">
+          <span className="material-icons animate-spin text-4xl text-primary">donut_large</span>
+          <p className="text-gray-500 font-medium text-sm">جاري تحميل الجلسة...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) {
     return <Login onLogin={handleLogin} />;
