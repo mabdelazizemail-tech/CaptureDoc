@@ -3131,8 +3131,8 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
   const handleAddProjectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setProjectError('');
-    if (!newProject.name.trim() || !newProject.location.trim()) {
-      setProjectError('يرجى ملء جميع الحقول الإلزامية');
+    if (!newProject.name.trim()) {
+      setProjectError('يرجى إدخال اسم المشروع');
       return;
     }
     
@@ -3147,10 +3147,11 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
     try {
       const vol = parseInt(newProject.monthlyVolume) || 0;
       const charge = parseFloat(newProject.clickCharge) || 0;
+      const locationVal = newProject.location.trim() || '—';
       
       const created = await StorageService.createProject(
         newProject.name.trim(),
-        newProject.location.trim(),
+        locationVal,
         newProject.startDate || undefined,
         vol,
         charge
@@ -3792,33 +3793,30 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
                       className={inputCls}
                     />
                   </Field>
-                  <Field label="موقع العمل (الفرع)" required>
+                  <Field label="موقع العمل (الفرع)">
                     <input
                       type="text"
-                      required
                       value={newProject.location}
                       onChange={e => setNewProject({...newProject, location: e.target.value})}
                       placeholder="مثال: القاهرة الجديدة"
                       className={inputCls}
                     />
                   </Field>
-                  <Field label="المستهدف الشهري (عدد النقرات)" required>
+                  <Field label="المستهدف الشهري (عدد النقرات)">
                     <input
                       type="number"
-                      required
-                      min={1}
+                      min={0}
                       value={newProject.monthlyVolume}
                       onChange={e => setNewProject({...newProject, monthlyVolume: e.target.value})}
                       placeholder="500000"
                       className={inputCls}
                     />
                   </Field>
-                  <Field label="سعر النقرة الواحدة (EGP)" required>
+                  <Field label="سعر النقرة الواحدة (EGP)">
                     <input
                       type="number"
-                      required
                       step="any"
-                      min={0.01}
+                      min={0}
                       value={newProject.clickCharge}
                       onChange={e => setNewProject({...newProject, clickCharge: e.target.value})}
                       placeholder="0.33"
