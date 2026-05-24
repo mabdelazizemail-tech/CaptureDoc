@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS public.receivable_monthly_tasks (
   task_month integer NOT NULL,
   task_year integer NOT NULL,
   due_date date NOT NULL,
-  assigned_user_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
+  assigned_user_id text REFERENCES public.profiles(id) ON DELETE SET NULL,
   status text DEFAULT 'Pending' NOT NULL, -- 'Pending' | 'In Progress' | 'Completed' | 'Skipped'
   notes text,
   reminder_status text DEFAULT 'Idle' NOT NULL, -- 'Idle' | 'Sent' | 'Overdue Sent'
