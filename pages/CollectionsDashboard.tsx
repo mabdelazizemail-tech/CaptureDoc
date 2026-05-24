@@ -2959,11 +2959,9 @@ const HistoryScreen: React.FC<{
 
 interface MonthlyTodoScreenProps {
   user: User;
-  invoices: Invoice[];
-  onTriggerInvoiceCreate: (projectName: string, customerName: string, monthlyTarget?: number, clickCharge?: number) => void;
 }
 
-const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, onTriggerInvoiceCreate }) => {
+const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
   const [tasks, setTasks] = useState<ReceivableMonthlyTask[]>([]);
   const [projects, setProjects] = useState<PMProject[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
@@ -2997,6 +2995,65 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
     const parts = selectedMonth.split('-');
     return [parseInt(parts[0]), parseInt(parts[1])];
   }, [selectedMonth]);
+
+  // Reminders check: Is the task overdue?
+  const isTaskOverdue = (task: ReceivableMonthlyTask) => {
+    if (task.status === 'Completed' || task.status === 'Skipped') return false;
+    const today = new Date().toISOString().slice(0, 10);
+    return task.due_date < today;
+  };
+
+  // Filter tasks
+  const filteredTasks = useMemo(() => {
+    return tasks.filter(task => {
+      const proj = projects.find(p => p.id === task.project_id);
+      const projName = proj ? proj.name : '';
+      const matchSearch = projName.toLowerCase().includes(search.toLowerCase()) || task.title.toLowerCase().includes(search.toLowerCase());
+      
+      const isCompleted = task.status === 'Completed';
+      const isOverdue = isTaskOverdue(task);
+
+      let matchStatus = true;
+      if (statusFilter === 'Pending') matchStatus = task.status === 'Pending';
+      else if (statusFilter === 'In Progress') matchStatus = task.status === 'In Progress';
+      else if (statusFilter === 'Completed') matchStatus = isCompleted;
+      else if (statusFilter === 'Skipped') matchStatus = task.status === 'Skipped';
+      else if (statusFilter === 'Overdue') matchStatus = isOverdue;
+
+      return matchSearch && matchStatus;
+    });
+  }, [tasks, projects, search, statusFilter]);
+
+  // Statistics Calculation
+  const stats = useMemo(() => {
+    const activeProjsCount = projects.length;
+    const requiredInvoicingCount = activeProjsCount;
+    let completedCount = 0;
+    let pendingCount = 0;
+    let overdueCount = 0;
+
+    projects.forEach(p => {
+      const task = tasks.find(t => t.project_id === p.id);
+      const isCompleted = task?.status === 'Completed';
+      
+      if (isCompleted) {
+        completedCount++;
+      } else {
+        pendingCount++;
+        if (task && isTaskOverdue(task)) {
+          overdueCount++;
+        }
+      }
+    });
+
+    return {
+      activeProjsCount,
+      requiredInvoicingCount,
+      completedCount,
+      pendingCount,
+      overdueCount
+    };
+  }, [projects, tasks]);
 
   const triggerToast = (msg: string, type: 'success' | 'error' = 'success') => {
     setToastMessage(msg);
@@ -3067,11 +3124,7 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
 
   // Toggle selection for all selectable tasks in the current filtered view
   const handleToggleSelectAll = () => {
-    const selectableTasks = filteredTasks.filter(t => {
-      const p = projects.find(proj => proj.id === t.project_id);
-      const auto = getAutoInvoiceInfo(p ? p.name : '');
-      return !(t.status === 'Completed' || auto.hasInvoice);
-    });
+    const selectableTasks = filteredTasks.filter(t => t.status !== 'Completed');
 
     const allSelectableChecked = selectableTasks.length > 0 && selectableTasks.every(t => selectedTaskIds.includes(t.id));
 
@@ -3174,80 +3227,7 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
     }
   };
 
-  // Helper: check if a project has been invoiced in the invoices list for the selected month/year
-  const getAutoInvoiceInfo = (projectName: string) => {
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const matchStr = `${year}-${pad(month)}`;
-    
-    const matching = invoices.find(inv => {
-      const nameMatch = (inv.projectName || '').trim() === projectName.trim();
-      const dateMatch = (inv.invoiceDate || '').startsWith(matchStr);
-      return nameMatch && dateMatch;
-    });
 
-    return matching ? { hasInvoice: true, invoiceNo: matching.invoiceNo, total: matching.total } : { hasInvoice: false };
-  };
-
-  // Reminders check: Is the task overdue?
-  const isTaskOverdue = (task: ReceivableMonthlyTask) => {
-    if (task.status === 'Completed' || task.status === 'Skipped') return false;
-    const today = new Date().toISOString().slice(0, 10);
-    return task.due_date < today;
-  };
-
-  // Filter tasks
-  const filteredTasks = useMemo(() => {
-    return tasks.filter(task => {
-      const proj = projects.find(p => p.id === task.project_id);
-      const projName = proj ? proj.name : '';
-      const matchSearch = projName.toLowerCase().includes(search.toLowerCase()) || task.title.toLowerCase().includes(search.toLowerCase());
-      
-      const autoInvoice = getAutoInvoiceInfo(projName);
-      const isCompleted = task.status === 'Completed' || autoInvoice.hasInvoice;
-      const isOverdue = isTaskOverdue(task);
-
-      let matchStatus = true;
-      if (statusFilter === 'Pending') matchStatus = task.status === 'Pending' && !autoInvoice.hasInvoice;
-      else if (statusFilter === 'In Progress') matchStatus = task.status === 'In Progress';
-      else if (statusFilter === 'Completed') matchStatus = isCompleted;
-      else if (statusFilter === 'Skipped') matchStatus = task.status === 'Skipped';
-      else if (statusFilter === 'Overdue') matchStatus = isOverdue;
-
-      return matchSearch && matchStatus;
-    });
-  }, [tasks, projects, search, statusFilter, invoices]);
-
-  // Statistics Calculation
-  const stats = useMemo(() => {
-    const activeProjsCount = projects.length;
-    const requiredInvoicingCount = activeProjsCount;
-    let completedCount = 0;
-    let pendingCount = 0;
-    let overdueCount = 0;
-
-    projects.forEach(p => {
-      const task = tasks.find(t => t.project_id === p.id);
-      const auto = getAutoInvoiceInfo(p.name);
-      const isCompleted = (task?.status === 'Completed') || auto.hasInvoice;
-      
-      if (isCompleted) {
-        completedCount++;
-      } else {
-        pendingCount++;
-        if (task && isTaskOverdue(task)) {
-          overdueCount++;
-        }
-      }
-    });
-
-    return {
-      activeProjsCount,
-      requiredInvoicingCount,
-      completedCount,
-      pendingCount,
-      overdueCount
-    };
-  }, [projects, tasks, invoices]);
 
   return (
     <div className="space-y-6">
@@ -3411,20 +3391,10 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
                         type="checkbox"
                         checked={
                           filteredTasks.length > 0 && 
-                          filteredTasks.filter(t => {
-                            const p = projects.find(proj => proj.id === t.project_id);
-                            const auto = getAutoInvoiceInfo(p ? p.name : '');
-                            return !(t.status === 'Completed' || auto.hasInvoice);
-                          }).every(t => selectedTaskIds.includes(t.id))
+                          filteredTasks.filter(t => t.status !== 'Completed').every(t => selectedTaskIds.includes(t.id))
                         }
                         onChange={handleToggleSelectAll}
-                        disabled={
-                          !filteredTasks.some(t => {
-                            const p = projects.find(proj => proj.id === t.project_id);
-                            const auto = getAutoInvoiceInfo(p ? p.name : '');
-                            return !(t.status === 'Completed' || auto.hasInvoice);
-                          })
-                        }
+                        disabled={!filteredTasks.some(t => t.status !== 'Completed')}
                         className="rounded bg-[#1b2130] border-gray-700 text-primary focus:ring-primary w-4 h-4 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                         title="تحديد الكل"
                       />
@@ -3442,9 +3412,8 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
                   {filteredTasks.map(task => {
                     const proj = projects.find(p => p.id === task.project_id);
                     const projName = proj ? proj.name : 'Unknown';
-                    const auto = getAutoInvoiceInfo(projName);
                     
-                    const isCompleted = task.status === 'Completed' || auto.hasInvoice;
+                    const isCompleted = task.status === 'Completed';
                     const isOverdue = isTaskOverdue(task);
                     
                     return (
@@ -3471,14 +3440,9 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
                         <td className="px-5 py-4 text-gray-300 font-medium">{projName}</td>
                         <td className="px-5 py-4 text-gray-300">{task.due_date}</td>
                         <td className="px-5 py-4">
-                          {auto.hasInvoice ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-900/50 text-green-400 border border-green-500/20">
-                              <span className="material-icons text-xs">auto_awesome</span>
-                              مكتملة (تلقائي)
-                            </span>
-                          ) : task.status === 'Completed' ? (
+                          {task.status === 'Completed' ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-900/30 text-green-400">
-                              مكتملة (يدوي)
+                              مكتملة
                             </span>
                           ) : isOverdue ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-900/40 text-red-400 animate-pulse">
@@ -3565,7 +3529,8 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
                 </thead>
                 <tbody className="divide-y divide-gray-700/50">
                   {projects.map(proj => {
-                    const auto = getAutoInvoiceInfo(proj.name);
+                    const task = tasks.find(t => t.project_id === proj.id);
+                    const isBilled = task?.status === 'Completed';
                     return (
                       <tr key={proj.id} className="hover:bg-[#2d3648] transition-colors">
                         <td className="px-5 py-4">
@@ -3577,10 +3542,10 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
                         <td className="px-5 py-4 text-gray-300 font-mono">{proj.click_charge ? `${proj.click_charge} EGP` : '—'}</td>
                         <td className="px-5 py-4 text-gray-400 text-xs">{proj.start_date || '—'}</td>
                         <td className="px-5 py-4 text-center">
-                          {auto.hasInvoice ? (
+                          {isBilled ? (
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-950/40 border border-green-700/60 text-green-300">
                               <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
-                              تمت الفوترة ({auto.invoiceNo})
+                              تمت الفوترة
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-950/40 border border-red-700/60 text-red-400">
@@ -3589,21 +3554,7 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
                             </span>
                           )}
                         </td>
-                        <td className="px-5 py-4">
-                          {!auto.hasInvoice && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onTriggerInvoiceCreate(proj.name, proj.name, proj.contract_monthly_volume, proj.click_charge);
-                              }}
-                              className="px-3 py-1.5 bg-blue-900/60 hover:bg-blue-700 text-blue-300 hover:text-white rounded text-xs font-semibold transition-colors flex items-center gap-1"
-                            >
-                              <span className="material-icons text-xs">add_box</span>
-                              إنشاء الفاتورة
-                            </button>
-                          )}
-                        </td>
+                        <td className="px-5 py-4"></td>
                       </tr>
                     );
                   })}
@@ -3645,28 +3596,9 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
                 </p>
               </div>
 
-              {/* Invoiced Status details */}
-              {(() => {
-                const proj = projects.find(p => p.id === selectedTask.project_id);
-                const projName = proj ? proj.name : '';
-                const auto = getAutoInvoiceInfo(projName);
-                if (auto.hasInvoice) {
-                  return (
-                    <div className="bg-green-950/30 border border-green-800/40 rounded-lg p-3 text-sm text-green-300 space-y-1">
-                      <p className="font-bold flex items-center gap-1">
-                        <span className="material-icons text-sm">check_circle</span>
-                        تم التحقق من الفوترة تلقائياً
-                      </p>
-                      <p className="text-xs text-green-400">سجل النظام فاتورة مفعلة لهذا المشروع برقم: <strong>{auto.invoiceNo}</strong> بإجمالي <strong>{auto.total?.toLocaleString()} EGP</strong>.</p>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-
               {selectedTask.status === 'Completed' ? (
                 <div className="bg-green-950/20 border border-green-900/50 p-4 rounded-lg space-y-1 text-sm text-green-300">
-                  <p className="font-bold">المهمة مكتملة يدويًا</p>
+                  <p className="font-bold">المهمة مكتملة</p>
                   <p className="text-xs">المسؤول: {selectedTask.completed_by}</p>
                   <p className="text-xs">تاريخ الإنجاز: {selectedTask.completed_at ? new Date(selectedTask.completed_at).toLocaleString('ar-EG') : '—'}</p>
                   {selectedTask.completion_note && (
@@ -3716,7 +3648,7 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
             </div>
 
             <div className="px-6 py-4 bg-[#1b2130] border-t border-gray-700 flex gap-2">
-              {selectedTask.status !== 'Completed' && !getAutoInvoiceInfo(projects.find(p => p.id === selectedTask.project_id)?.name || '').hasInvoice && (
+              {selectedTask.status !== 'Completed' && (
                 <>
                   <button
                     type="button"
@@ -3725,21 +3657,6 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
                     className="flex-1 bg-green-700 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-40"
                   >
                     إنجاز الفوترة
-                  </button>
-                  <button
-                    type="button"
-                    disabled={completingTask}
-                    onClick={() => {
-                      const proj = projects.find(p => p.id === selectedTask.project_id);
-                      if (proj) {
-                        setShowTaskDetailsModal(false);
-                        onTriggerInvoiceCreate(proj.name, proj.name, proj.contract_monthly_volume, proj.click_charge);
-                      }
-                    }}
-                    className="bg-blue-700 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1"
-                  >
-                    <span className="material-icons text-sm">receipt</span>
-                    الذهاب للفوترة
                   </button>
                 </>
               )}
@@ -4288,8 +4205,6 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
       {screen === 'monthly-todo' && (
         <MonthlyTodoScreen
           user={user}
-          invoices={invoices}
-          onTriggerInvoiceCreate={handleTriggerInvoiceCreate}
         />
       )}
     </div>
