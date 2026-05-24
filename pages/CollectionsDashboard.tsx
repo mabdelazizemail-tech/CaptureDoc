@@ -666,11 +666,12 @@ const emptyForm = (): Omit<Invoice, 'id' | 'payments' | 'collectionStatus' | 'pa
 
 const CreateInvoiceScreen: React.FC<{
   editing: Invoice | null;
+  invoices: Invoice[];
   onSave: (data: Partial<Invoice>) => void;
   onAddCreditNote?: (cn: Omit<CreditNote, 'id'>) => void;
   onCancel: () => void;
   user: User;
-}> = ({ editing, onSave, onAddCreditNote, onCancel, user }) => {
+}> = ({ editing, invoices, onSave, onAddCreditNote, onCancel, user }) => {
   const [activeTab, setActiveTab] = useState<'invoice' | 'credit-notes'>('invoice');
   const [form, setForm] = useState(() => {
     if (editing) {
@@ -708,6 +709,31 @@ const CreateInvoiceScreen: React.FC<{
   const [etaImporting,  setEtaImporting]  = useState('');
   const [etaPdfLoading, setEtaPdfLoading] = useState('');
   const [etaPdfPreview, setEtaPdfPreview] = useState<{ uuid: string; name: string; url: string } | null>(null);
+
+  // Sorting state for ETA list
+  const [etaSortCol, setEtaSortCol] = useState<string>('dateTimeIssued');
+  const [etaSortDir, setEtaSortDir] = useState<SortDir>('desc');
+
+  const handleEtaSort = (col: string) => {
+    setEtaSortDir(prev => etaSortCol === col && prev === 'asc' ? 'desc' : 'asc');
+    setEtaSortCol(col);
+  };
+
+  const sortedEtaRows = useMemo(() => {
+    if (!etaSortCol) return etaRows;
+    return [...etaRows].sort((a, b) => {
+      let v = 0;
+      if (etaSortCol === 'internalId') v = cmp(a.internalId, b.internalId);
+      else if (etaSortCol === 'receiverName') v = cmp(a.receiverName, b.receiverName);
+      else if (etaSortCol === 'dateTimeIssued') v = cmp(a.dateTimeIssued, b.dateTimeIssued);
+      else if (etaSortCol === 'total') v = cmp(a.total, b.total);
+      return applySortDir(v, etaSortDir);
+    });
+  }, [etaRows, etaSortCol, etaSortDir]);
+
+  const isImported = (internalId: string) => {
+    return invoices.some(inv => inv.invoiceNo === internalId);
+  };
 
   // Load ETA credentials: Supabase first (cross-device), fall back to localStorage
   useEffect(() => {
@@ -783,6 +809,10 @@ const CreateInvoiceScreen: React.FC<{
   const etaPrevPage = () => { const s = [...etaTokenStack]; s.pop(); setEtaTokenStack(s); fetchEtaList(s[s.length - 1] ?? '', false); };
 
   const importEtaRow = async (row: EtaRow) => {
+    if (isImported(row.internalId)) {
+      const confirmImport = window.confirm(`الفاتورة رقم "${row.internalId}" تم استيرادها من قبل بالفعل.\nهل تريد بالتأكيد استيرادها مرة أخرى؟`);
+      if (!confirmImport) return;
+    }
     setEtaImporting(row.uuid);
     try {
       const data = await etaCall({ action: 'get', uuid: row.uuid });
@@ -1272,16 +1302,16 @@ const CreateInvoiceScreen: React.FC<{
                     <table className="w-full text-xs text-right">
                       <thead className="bg-[#232b3e] text-gray-400">
                         <tr>
-                          <th className="px-3 py-2">رقم الفاتورة</th>
-                          <th className="px-3 py-2">العميل</th>
-                          <th className="px-3 py-2">التاريخ</th>
-                          <th className="px-3 py-2 text-left">الإجمالي</th>
+                          <SortTh label="رقم الفاتورة" col="internalId" sortCol={etaSortCol} sortDir={etaSortDir} onSort={handleEtaSort} className="px-3 py-2 text-right" />
+                          <SortTh label="العميل" col="receiverName" sortCol={etaSortCol} sortDir={etaSortDir} onSort={handleEtaSort} className="px-3 py-2 text-right" />
+                          <SortTh label="التاريخ" col="dateTimeIssued" sortCol={etaSortCol} sortDir={etaSortDir} onSort={handleEtaSort} className="px-3 py-2 text-right" />
+                          <SortTh label="الإجمالي" col="total" sortCol={etaSortCol} sortDir={etaSortDir} onSort={handleEtaSort} className="px-3 py-2 text-left" />
                           <th className="px-3 py-2 text-center">PDF</th>
                           <th className="px-3 py-2"></th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-700/50">
-                        {etaRows.map(row => (
+                        {sortedEtaRows.map(row => (
                           <tr key={row.uuid} className="hover:bg-[#2d3648] transition-colors">
                             <td className="px-3 py-2 text-gray-200 font-mono">{row.internalId}</td>
                             <td className="px-3 py-2 text-gray-300 max-w-[160px] truncate" title={row.receiverName}>{row.receiverName}</td>
@@ -1301,11 +1331,27 @@ const CreateInvoiceScreen: React.FC<{
                               </button>
                             </td>
                             <td className="px-3 py-2">
-                              <button type="button" onClick={() => importEtaRow(row)} disabled={etaImporting === row.uuid}
-                                className="flex items-center gap-1 px-2 py-1 rounded bg-blue-700/70 hover:bg-blue-600 text-white transition-colors disabled:opacity-50 whitespace-nowrap">
-                                <span className={`material-icons text-xs ${etaImporting === row.uuid ? 'animate-spin' : ''}`}>{etaImporting === row.uuid ? 'refresh' : 'download'}</span>
-                                استيراد
-                              </button>
+                              {isImported(row.internalId) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => importEtaRow(row)}
+                                  disabled={etaImporting === row.uuid}
+                                  className="flex items-center gap-1 px-2 py-1 rounded bg-green-800/80 hover:bg-green-700 text-white transition-colors disabled:opacity-50 whitespace-nowrap border border-green-500"
+                                >
+                                  <span className={`material-icons text-xs ${etaImporting === row.uuid ? 'animate-spin' : ''}`}>{etaImporting === row.uuid ? 'refresh' : 'done'}</span>
+                                  مستوردة
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => importEtaRow(row)}
+                                  disabled={etaImporting === row.uuid}
+                                  className="flex items-center gap-1 px-2 py-1 rounded bg-blue-700/70 hover:bg-blue-600 text-white transition-colors disabled:opacity-50 whitespace-nowrap"
+                                >
+                                  <span className={`material-icons text-xs ${etaImporting === row.uuid ? 'animate-spin' : ''}`}>{etaImporting === row.uuid ? 'refresh' : 'download'}</span>
+                                  استيراد
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -2978,7 +3024,7 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
         />
       )}
       {screen === 'create-invoice' && (
-        <CreateInvoiceScreen editing={editingInvoice} onSave={saveInvoice} onAddCreditNote={editingInvoice ? saveCreditNote : undefined} onCancel={goBack} user={user} />
+        <CreateInvoiceScreen editing={editingInvoice} invoices={invoices} onSave={saveInvoice} onAddCreditNote={editingInvoice ? saveCreditNote : undefined} onCancel={goBack} user={user} />
       )}
       {screen === 'invoice-details' && selectedInvoice && (
         <InvoiceDetailsScreen
