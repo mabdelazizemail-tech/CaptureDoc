@@ -2985,6 +2985,9 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
   const [showTaskDetailsModal, setShowTaskDetailsModal] = useState(false);
   const [completionNote, setCompletionNote] = useState('');
   const [completingTask, setCompletingTask] = useState(false);
+
+  // Multi-select & bulk actions state
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -3003,6 +3006,7 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
 
   const loadData = async (forceRegenerate = false) => {
     setLoading(true);
+    setSelectedTaskIds([]); // Reset selection when month changes or is reloaded
     try {
       // 1. Load active projects
       const projs = await PMStorageService.getProjects();
@@ -3051,6 +3055,75 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
       triggerToast(`فشل تحديث المهمة: ${err?.message || 'خطأ'}`, 'error');
     } finally {
       setCompletingTask(false);
+    }
+  };
+
+  // Toggle selection for a single task
+  const handleToggleSelectTask = (taskId: string) => {
+    setSelectedTaskIds(prev => 
+      prev.includes(taskId) ? prev.filter(id => id !== taskId) : [...prev, taskId]
+    );
+  };
+
+  // Toggle selection for all selectable tasks in the current filtered view
+  const handleToggleSelectAll = () => {
+    const selectableTasks = filteredTasks.filter(t => {
+      const p = projects.find(proj => proj.id === t.project_id);
+      const auto = getAutoInvoiceInfo(p ? p.name : '');
+      return !(t.status === 'Completed' || auto.hasInvoice);
+    });
+
+    const allSelectableChecked = selectableTasks.length > 0 && selectableTasks.every(t => selectedTaskIds.includes(t.id));
+
+    if (allSelectableChecked) {
+      setSelectedTaskIds(prev => prev.filter(id => !selectableTasks.some(t => t.id === id)));
+    } else {
+      setSelectedTaskIds(prev => {
+        const uniqueNew = selectableTasks
+          .map(t => t.id)
+          .filter(id => !prev.includes(id));
+        return [...prev, ...uniqueNew];
+      });
+    }
+  };
+
+  // Bulk complete selected tasks
+  const handleBulkComplete = async () => {
+    if (!selectedTaskIds.length) return;
+    setLoading(true);
+    try {
+      const updatedTasks = tasks.map(task => {
+        if (selectedTaskIds.includes(task.id)) {
+          return {
+            ...task,
+            status: 'Completed' as const,
+            completed_at: new Date().toISOString(),
+            completed_by: user.name || user.username,
+            completion_note: 'اعتماد الإنجاز جماعياً عبر التحديد المتعدد',
+            updated_by: user.username,
+            updated_at: new Date().toISOString()
+          };
+        }
+        return task;
+      });
+
+      // Save each to storage/DB
+      await Promise.all(
+        tasks
+          .filter(t => selectedTaskIds.includes(t.id))
+          .map(t => {
+            const updated = updatedTasks.find(ut => ut.id === t.id)!;
+            return ReceivableTodoService.upsertMonthlyTask(updated);
+          })
+      );
+
+      setTasks(updatedTasks);
+      setSelectedTaskIds([]);
+      triggerToast(`تم اعتماد إنجاز عدد ${selectedTaskIds.length} مهمة بنجاح`, 'success');
+    } catch (err: any) {
+      triggerToast(`فشل التحديث الجماعي: ${err?.message || 'خطأ'}`, 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -3332,13 +3405,36 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
               <table className="w-full text-sm text-right">
                 <thead>
                   <tr className="text-gray-500 text-xs border-b border-gray-700 bg-[#1b2130]">
+                    <th className="px-4 py-3 w-12 text-center">
+                      <input 
+                        type="checkbox"
+                        checked={
+                          filteredTasks.length > 0 && 
+                          filteredTasks.filter(t => {
+                            const p = projects.find(proj => proj.id === t.project_id);
+                            const auto = getAutoInvoiceInfo(p ? p.name : '');
+                            return !(t.status === 'Completed' || auto.hasInvoice);
+                          }).every(t => selectedTaskIds.includes(t.id))
+                        }
+                        onChange={handleToggleSelectAll}
+                        disabled={
+                          !filteredTasks.some(t => {
+                            const p = projects.find(proj => proj.id === t.project_id);
+                            const auto = getAutoInvoiceInfo(p ? p.name : '');
+                            return !(t.status === 'Completed' || auto.hasInvoice);
+                          })
+                        }
+                        className="rounded bg-[#1b2130] border-gray-700 text-primary focus:ring-primary w-4 h-4 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="تحديد الكل"
+                      />
+                    </th>
                     <th className="px-5 py-3">عنوان المهمة التذكيرية</th>
                     <th className="px-5 py-3">المشروع</th>
                     <th className="px-5 py-3">تاريخ الاستحقاق</th>
                     <th className="px-5 py-3">الحالة الحالية</th>
                     <th className="px-5 py-3">التنبيهات</th>
                     <th className="px-5 py-3">المسؤول</th>
-                    <th className="px-5 py-3"></th>
+                    <th className="px-5 py-3 text-center">الإجراءات</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-700/50">
@@ -3355,9 +3451,18 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
                         key={task.id} 
                         className={`hover:bg-[#2d3648] transition-colors cursor-pointer ${
                           isOverdue ? 'bg-red-950/10' : ''
-                        }`}
+                        } ${selectedTaskIds.includes(task.id) ? 'bg-primary/5' : ''}`}
                         onClick={() => { setSelectedTask(task); setShowTaskDetailsModal(true); }}
                       >
+                        <td className="px-4 py-4 w-12 text-center" onClick={e => e.stopPropagation()}>
+                          <input 
+                            type="checkbox"
+                            checked={selectedTaskIds.includes(task.id)}
+                            onChange={() => handleToggleSelectTask(task.id)}
+                            disabled={isCompleted}
+                            className="rounded bg-[#1b2130] border-gray-700 text-primary focus:ring-primary w-4 h-4 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                          />
+                        </td>
                         <td className="px-5 py-4">
                           <p className="text-white font-medium">{task.title}</p>
                           <p className="text-xs text-gray-500 font-mono mt-0.5">ID: {task.id.slice(0, 8)}</p>
@@ -3408,8 +3513,27 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
                           )}
                         </td>
                         <td className="px-5 py-4 text-xs text-gray-400">{task.completed_by || '—'}</td>
-                        <td className="px-5 py-4">
-                          <span className="material-icons text-gray-500 text-base">chevron_left</span>
+                        <td className="px-5 py-4 flex items-center justify-center gap-2" onClick={e => e.stopPropagation()}>
+                          {!isCompleted ? (
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateTaskStatus(task, 'Completed', 'تم الاعتماد بنجاح بنقرة واحدة مباشرة من الجدول')}
+                              title="اعتماد كمكتمل بنقرة واحدة"
+                              className="w-8 h-8 rounded-full bg-green-950/40 hover:bg-green-700 border border-green-700/60 text-green-400 hover:text-white flex items-center justify-center transition-all shadow-sm"
+                            >
+                              <span className="material-icons text-base">check</span>
+                            </button>
+                          ) : (
+                            <span className="material-icons text-gray-600 text-base">lock</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => { setSelectedTask(task); setShowTaskDetailsModal(true); }}
+                            title="تفاصيل المتابعة"
+                            className="w-8 h-8 rounded-full bg-[#1b2130] hover:bg-gray-700 border border-gray-700 text-gray-400 hover:text-white flex items-center justify-center transition-all"
+                          >
+                            <span className="material-icons text-base">visibility</span>
+                          </button>
                         </td>
                       </tr>
                     );
@@ -3736,6 +3860,35 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, o
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Floating Bulk Action Bar */}
+      {subTab === 'tasks' && selectedTaskIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#1b2130]/95 backdrop-blur-md border border-gray-600 shadow-2xl rounded-2xl px-6 py-4 flex items-center gap-4 z-40 transition-all duration-300 transform translate-y-0 scale-100 animate-fade-in" dir="rtl">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
+            <span className="text-sm font-semibold text-white">
+              تم تحديد <span className="text-primary font-bold text-base">{selectedTaskIds.length}</span> مهمة للتحصيل والاعتماد
+            </span>
+          </div>
+          
+          <button
+            type="button"
+            onClick={handleBulkComplete}
+            className="bg-green-700 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1.5 shadow-lg shadow-green-950/50"
+          >
+            <span className="material-icons text-sm">check_circle</span>
+            اعتماد مكتملة
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => setSelectedTaskIds([])}
+            className="bg-gray-700 hover:bg-gray-600 text-gray-200 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+          >
+            إلغاء التحديد
+          </button>
         </div>
       )}
     </div>
