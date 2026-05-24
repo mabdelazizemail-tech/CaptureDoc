@@ -735,6 +735,219 @@ const CreateInvoiceScreen: React.FC<{
     return invoices.some(inv => inv.invoiceNo === internalId);
   };
 
+  const exportEtaReportCsv = () => {
+    const headers = ['رقم الفاتورة', 'العميل', 'التاريخ', 'الإجمالي', 'حالة الاستيراد'];
+    const dataRows = sortedEtaRows.map(row => [
+      row.internalId,
+      row.receiverName,
+      row.dateTimeIssued,
+      `${row.total.toFixed(2)} EGP`,
+      isImported(row.internalId) ? 'مستوردة (Imported)' : 'غير مستوردة (New)'
+    ]);
+    
+    // Add BOM (\uFEFF) for Excel Arabic support
+    const csvContent = "\uFEFF" + [headers, ...dataRows].map(r => r.map(cell => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `تقرير_فواتير_ETA_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const printEtaReport = () => {
+    const w = window.open('', '_blank');
+    if (!w) { alert('يرجى السماح بالنوافذ المنبثقة لطباعة التقرير.'); return; }
+    
+    const totalCount = sortedEtaRows.length;
+    const importedCount = sortedEtaRows.filter(r => isImported(r.internalId)).length;
+    const newCount = totalCount - importedCount;
+    const totalValue = sortedEtaRows.reduce((s, r) => s + r.total, 0);
+
+    w.document.write(`
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="utf-8">
+        <title>تقرير فواتير بوابة الضرائب المصرية (ETA)</title>
+        <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+        <style>
+          body {
+            font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+            padding: 30px;
+            color: #1e293b;
+            background: #fff;
+            max-width: 1000px;
+            margin: 0 auto;
+          }
+          .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+          }
+          .title-section h1 {
+            color: #1e3a8a;
+            font-size: 22px;
+            margin: 0;
+            font-weight: 800;
+          }
+          .title-section p {
+            color: #64748b;
+            font-size: 13px;
+            margin: 5px 0 0 0;
+          }
+          .stats-grid {
+            display: grid;
+            grid-template-cols: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 25px;
+          }
+          .stat-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+          }
+          .stat-card h3 {
+            margin: 0;
+            font-size: 12px;
+            color: #64748b;
+            font-weight: 600;
+          }
+          .stat-card p {
+            margin: 5px 0 0 0;
+            font-size: 18px;
+            font-weight: 700;
+            color: #0f172a;
+          }
+          .stat-card.imported p { color: #16a34a; }
+          .stat-card.new p { color: #2563eb; }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            font-size: 13px;
+          }
+          th, td {
+            border: 1px solid #e2e8f0;
+            padding: 10px 12px;
+            text-align: right;
+          }
+          th {
+            background: #f1f5f9;
+            color: #334155;
+            font-weight: 700;
+          }
+          tr:nth-child(even) {
+            background: #f8fafc;
+          }
+          .status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+          }
+          .status.imported {
+            background: #dcfce7;
+            color: #166534;
+          }
+          .status.new {
+            background: #dbeafe;
+            color: #1e40af;
+          }
+          .footer {
+            text-align: center;
+            font-size: 11px;
+            color: #94a3b8;
+            margin-top: 40px;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 15px;
+          }
+          @media print {
+            body { padding: 0; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="title-section">
+            <h1>تقرير فواتير بوابة الضرائب المصرية (ETA)</h1>
+            <p>تم إصداره في: ${new Date().toLocaleString('ar-EG')}</p>
+          </div>
+          <div class="no-print">
+            <button onclick="window.print()" style="background: #1e3a8a; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-family: 'Cairo';">طباعة التقرير</button>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <h3>إجمالي الفواتير</h3>
+            <p>${totalCount}</p>
+          </div>
+          <div class="stat-card imported">
+            <h3>مستوردة سابقاً</h3>
+            <p>${importedCount}</p>
+          </div>
+          <div class="stat-card new">
+            <h3>جديدة (غير مستوردة)</h3>
+            <p>${newCount}</p>
+          </div>
+          <div class="stat-card">
+            <h3>القيمة الإجمالية</h3>
+            <p>${totalValue.toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EGP</p>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>رقم الفاتورة</th>
+              <th>العميل</th>
+              <th>التاريخ</th>
+              <th style="text-align: left;">الإجمالي</th>
+              <th style="text-align: center;">حالة الاستيراد</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sortedEtaRows.map(row => `
+              <tr>
+                <td style="font-family: monospace; font-weight: bold;">${row.internalId}</td>
+                <td>${row.receiverName}</td>
+                <td>${row.dateTimeIssued}</td>
+                <td style="text-align: left; font-weight: bold;">${row.total.toLocaleString('ar-EG', { minimumFractionDigits: 2 })} EGP</td>
+                <td style="text-align: center;">
+                  ${isImported(row.internalId) 
+                    ? '<span class="status imported">مستوردة</span>' 
+                    : '<span class="status new">غير مستوردة</span>'}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div class="footer">
+          نظام Capture Flow المالي ومتابعة التحصيلات
+        </div>
+        <script>
+          window.onload = () => {
+            setTimeout(() => { window.print(); }, 500);
+          }
+        </script>
+      </body>
+      </html>
+    `);
+    w.document.close();
+  };
+
   // Load ETA credentials: Supabase first (cross-device), fall back to localStorage
   useEffect(() => {
     (async () => {
@@ -1287,6 +1500,26 @@ const CreateInvoiceScreen: React.FC<{
                       className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs bg-[#232b3e] border border-gray-600 text-gray-300 hover:text-white hover:border-blue-500 transition-colors">
                       <span className="material-icons text-sm">search</span> بحث
                     </button>
+                    {etaRows.length > 0 && (
+                      <div className="mr-auto flex gap-2">
+                        <button
+                          type="button"
+                          onClick={exportEtaReportCsv}
+                          className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs bg-green-950/40 border border-green-700/60 text-green-300 hover:text-white hover:bg-green-700 transition-colors font-medium"
+                        >
+                          <span className="material-icons text-sm">file_download</span>
+                          تصدير إكسل
+                        </button>
+                        <button
+                          type="button"
+                          onClick={printEtaReport}
+                          className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs bg-blue-950/40 border border-blue-700/60 text-blue-300 hover:text-white hover:bg-blue-700 transition-colors font-medium"
+                        >
+                          <span className="material-icons text-sm">print</span>
+                          طباعة التقرير
+                        </button>
+                      </div>
+                    )}
                   </div>
                   {(() => { const days = Math.round((new Date(etaDateTo).getTime() - new Date(etaDateFrom).getTime()) / 86_400_000); return days > 30 ? (
                     <p className="text-xs text-yellow-400/80 flex items-center gap-1">
