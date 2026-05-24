@@ -2984,6 +2984,10 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
   const [completionNote, setCompletionNote] = useState('');
   const [completingTask, setCompletingTask] = useState(false);
 
+  // Confirmed billing states inside modal
+  const [modalBillingInterval, setModalBillingInterval] = useState<'monthly' | 'quarterly_arrears' | 'quarterly_advance' | 'advance' | 'custom'>('monthly');
+  const [modalInvoiceCount, setModalInvoiceCount] = useState<number>(1);
+
   // Multi-select & bulk actions state
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   
@@ -3003,6 +3007,48 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
     return task.due_date < today;
   };
 
+  // Helper dictionary for Arabic translations
+  const billingIntervalAr: Record<string, string> = {
+    monthly: 'شهري (Monthly)',
+    quarterly_arrears: 'ربع سنوي - لاحق (Arrears)',
+    quarterly_advance: 'ربع سنوي - مقدم (Advance)',
+    advance: 'دفعة مقدمة (Advance)',
+    custom: 'فوترة مخصصة (Custom)',
+  };
+
+  // Handler to open task and set internal modal states
+  const handleOpenTaskDetails = (task: ReceivableMonthlyTask) => {
+    setSelectedTask(task);
+    setModalBillingInterval(task.billing_interval || 'monthly');
+    setModalInvoiceCount(task.invoice_count || 1);
+    setCompletionNote(task.notes || '');
+    setShowTaskDetailsModal(true);
+  };
+
+  // Save timing/count updates without necessarily completing the task
+  const handleSaveBillingDetails = async () => {
+    if (!selectedTask) return;
+    setCompletingTask(true);
+    try {
+      const updated: ReceivableMonthlyTask = {
+        ...selectedTask,
+        billing_interval: modalBillingInterval,
+        invoice_count: modalInvoiceCount,
+        notes: completionNote || undefined,
+        updated_by: user.username,
+        updated_at: new Date().toISOString()
+      };
+      await ReceivableTodoService.upsertMonthlyTask(updated);
+      setTasks(prev => prev.map(t => t.id === selectedTask.id ? updated : t));
+      setSelectedTask(updated);
+      triggerToast('تم حفظ تفاصيل الفوترة والتعديلات بنجاح', 'success');
+    } catch (err: any) {
+      triggerToast(`فشل حفظ التعديلات: ${err?.message || 'خطأ'}`, 'error');
+    } finally {
+      setCompletingTask(false);
+    }
+  };
+
   // Filter tasks
   const filteredTasks = useMemo(() => {
     return tasks.filter(task => {
@@ -3012,7 +3058,7 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
       
       const isCompleted = task.status === 'Completed';
       const isOverdue = isTaskOverdue(task);
-
+ 
       let matchStatus = true;
       if (statusFilter === 'Pending') matchStatus = task.status === 'Pending';
       else if (statusFilter === 'In Progress') matchStatus = task.status === 'In Progress';
@@ -3097,6 +3143,8 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
         ...task,
         status: newStatus,
         notes: note || task.notes,
+        billing_interval: modalBillingInterval,
+        invoice_count: modalInvoiceCount,
         completed_at: newStatus === 'Completed' ? new Date().toISOString() : undefined,
         completed_by: newStatus === 'Completed' ? user.name || user.username : undefined,
         completion_note: note || undefined,
@@ -3422,7 +3470,7 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
                         className={`hover:bg-[#2d3648] transition-colors cursor-pointer ${
                           isOverdue ? 'bg-red-950/10' : ''
                         } ${selectedTaskIds.includes(task.id) ? 'bg-primary/5' : ''}`}
-                        onClick={() => { setSelectedTask(task); setShowTaskDetailsModal(true); }}
+                        onClick={() => handleOpenTaskDetails(task)}
                       >
                         <td className="px-4 py-4 w-12 text-center" onClick={e => e.stopPropagation()}>
                           <input 
@@ -3436,6 +3484,16 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
                         <td className="px-5 py-4">
                           <p className="text-white font-medium">{task.title}</p>
                           <p className="text-xs text-gray-500 font-mono mt-0.5">ID: {task.id.slice(0, 8)}</p>
+                          <div className="flex flex-wrap gap-1.5 mt-1.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-[#1b2130] text-gray-400 border border-gray-700/50">
+                              <span className="material-icons text-[10px]" style={{ fontSize: '10px' }}>schedule</span>
+                              {billingIntervalAr[task.billing_interval || 'monthly'] || 'شهري'}
+                            </span>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-950/40 text-blue-300 border border-blue-900/30">
+                              <span className="material-icons text-[10px]" style={{ fontSize: '10px' }}>receipt_long</span>
+                              {task.invoice_count || 1} فواتير
+                            </span>
+                          </div>
                         </td>
                         <td className="px-5 py-4 text-gray-300 font-medium">{projName}</td>
                         <td className="px-5 py-4 text-gray-300">{task.due_date}</td>
@@ -3493,7 +3551,7 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
                           )}
                           <button
                             type="button"
-                            onClick={() => { setSelectedTask(task); setShowTaskDetailsModal(true); }}
+                            onClick={() => handleOpenTaskDetails(task)}
                             title="تفاصيل المتابعة"
                             className="w-8 h-8 rounded-full bg-[#1b2130] hover:bg-gray-700 border border-gray-700 text-gray-400 hover:text-white flex items-center justify-center transition-all"
                           >
@@ -3596,6 +3654,37 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
                 </p>
               </div>
 
+              {/* Invoicing Frequency & Timing and Count Confirmation */}
+              <div className="bg-[#1b2130] p-4 rounded-lg border border-gray-700/50 space-y-3">
+                <span className="text-xs font-semibold text-gray-400 uppercase block mb-1">تفاصيل الفوترة وتأكيد الفواتير</span>
+                <div className="grid grid-cols-2 gap-3 text-right">
+                  <Field label="دورية الفوترة التذكيرية">
+                    <select
+                      value={modalBillingInterval}
+                      onChange={e => setModalBillingInterval(e.target.value as any)}
+                      disabled={selectedTask.status === 'Completed'}
+                      className={inputCls}
+                    >
+                      <option value="monthly">شهري (Monthly)</option>
+                      <option value="quarterly_arrears">ربع سنوي - لاحق (Quarterly in Arrears)</option>
+                      <option value="quarterly_advance">ربع سنوي - مقدم (Quarterly in Advance)</option>
+                      <option value="advance">دفعة مقدمة (Advance)</option>
+                      <option value="custom">فوترة مخصصة (Custom)</option>
+                    </select>
+                  </Field>
+                  <Field label="عدد الفواتير المطلوبة">
+                    <input
+                      type="number"
+                      min={1}
+                      value={modalInvoiceCount}
+                      onChange={e => setModalInvoiceCount(parseInt(e.target.value, 10) || 1)}
+                      disabled={selectedTask.status === 'Completed'}
+                      className={inputCls}
+                    />
+                  </Field>
+                </div>
+              </div>
+
               {selectedTask.status === 'Completed' ? (
                 <div className="bg-green-950/20 border border-green-900/50 p-4 rounded-lg space-y-1 text-sm text-green-300">
                   <p className="font-bold">المهمة مكتملة</p>
@@ -3657,6 +3746,14 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
                     className="flex-1 bg-green-700 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-40"
                   >
                     إنجاز الفوترة
+                  </button>
+                  <button
+                    type="button"
+                    disabled={completingTask}
+                    onClick={handleSaveBillingDetails}
+                    className="px-4 bg-primary hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-40"
+                  >
+                    حفظ التعديلات
                   </button>
                 </>
               )}

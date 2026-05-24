@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS public.receivable_monthly_tasks (
   completed_at timestamptz,
   completed_by text, -- Username of completion operator
   completion_note text,
+  billing_interval text DEFAULT 'monthly' NOT NULL, -- 'monthly' | 'quarterly_arrears' | 'quarterly_advance' | 'advance' | 'custom'
+  invoice_count integer DEFAULT 1 NOT NULL,
   created_at timestamptz DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at timestamptz DEFAULT timezone('utc'::text, now()) NOT NULL,
   created_by text,
