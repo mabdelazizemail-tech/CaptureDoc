@@ -4,13 +4,16 @@ import { parseInvoicePdf, ParsedInvoice } from '../services/invoicePdfParser';
 import { loadInvoices as loadInvoicesRemote, upsertInvoice as upsertInvoiceRemote, deleteInvoices as deleteInvoicesRemote } from '../services/collectionsStorage';
 import { supabase } from '../services/supabaseClient';
 import { autoPostInvoiceIssuance, autoPostPaymentReceived, autoPostCreditNote } from '../services/journalAutoPost';
+import { ReceivableTodoService, ReceivableMonthlyTask } from '../services/receivableTodoStorage';
+import { PMStorageService, PMProject } from '../services/pmStorage';
+import { StorageService } from '../services/storage';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type InvoiceStatus = 'Draft' | 'Approved' | 'Sent' | 'Cancelled';
 type CollectionStatus = 'Not Due' | 'Due' | 'Overdue' | 'Partially Paid' | 'Paid' | 'Disputed';
 type PaymentStatus = 'Unpaid' | 'Partial' | 'Paid';
-type Screen = 'dashboard' | 'invoice-list' | 'create-invoice' | 'invoice-details' | 'payment-entry' | 'history';
+type Screen = 'dashboard' | 'invoice-list' | 'create-invoice' | 'invoice-details' | 'payment-entry' | 'history' | 'monthly-todo';
 
 interface Payment {
   id: string;
@@ -301,6 +304,7 @@ const TABS = [
   { id: 'invoice-list', label: 'إصدار الفواتير', icon: 'receipt_long' },
   { id: 'payment-entry', label: 'تسجيل السداد', icon: 'payments' },
   { id: 'history', label: 'سجل التحصيلات', icon: 'history' },
+  { id: 'monthly-todo', label: 'قائمة المهام الشهرية', icon: 'assignment_turned_in' },
 ] as const;
 
 // ─── Screen: Dashboard ────────────────────────────────────────────────────────
@@ -666,12 +670,13 @@ const emptyForm = (): Omit<Invoice, 'id' | 'payments' | 'collectionStatus' | 'pa
 
 const CreateInvoiceScreen: React.FC<{
   editing: Invoice | null;
+  prepopulatedData?: Partial<Invoice> | null;
   invoices: Invoice[];
   onSave: (data: Partial<Invoice>) => void;
   onAddCreditNote?: (cn: Omit<CreditNote, 'id'>) => void;
   onCancel: () => void;
   user: User;
-}> = ({ editing, invoices, onSave, onAddCreditNote, onCancel, user }) => {
+}> = ({ editing, prepopulatedData, invoices, onSave, onAddCreditNote, onCancel, user }) => {
   const [activeTab, setActiveTab] = useState<'invoice' | 'credit-notes'>('invoice');
   const [form, setForm] = useState(() => {
     if (editing) {
@@ -679,6 +684,25 @@ const CreateInvoiceScreen: React.FC<{
       const tax = (editing.tax > 0) ? editing.tax : Math.round(amt * 0.14 * 100) / 100;
       const rate = (editing.invoiceType || 'توريدات') === 'خدمات' ? 0.03 : 0.01;
       return { invoiceNo: editing.invoiceNo, customer: editing.customer, projectName: editing.projectName || '', invoiceDate: editing.invoiceDate, dueDate: editing.dueDate, amount: amt, tax, total: amt + tax, invoiceStatus: editing.invoiceStatus, currency: editing.currency || 'EGP', exchangeRate: editing.exchangeRate || 0, invoiceType: editing.invoiceType || 'توريدات', withholdingTax: editing.withholdingTax > 0 ? editing.withholdingTax : Math.round(amt * rate * 100) / 100, invoiceNotes: editing.invoiceNotes || '' };
+    }
+    if (prepopulatedData) {
+      const base = emptyForm();
+      const amt = prepopulatedData.amount || 0;
+      const tax = Math.round(amt * 0.14 * 100) / 100;
+      const rate = (prepopulatedData.invoiceType || 'توريدات') === 'خدمات' ? 0.03 : 0.01;
+      return {
+        ...base,
+        customer: prepopulatedData.customer || '',
+        projectName: prepopulatedData.projectName || '',
+        amount: amt,
+        tax: tax,
+        total: amt + tax,
+        currency: prepopulatedData.currency || 'EGP',
+        invoiceType: prepopulatedData.invoiceType || 'توريدات',
+        withholdingTax: Math.round(amt * rate * 100) / 100,
+        invoiceNotes: prepopulatedData.invoiceNotes || '',
+        invoiceDate: prepopulatedData.invoiceDate || base.invoiceDate,
+      };
     }
     return emptyForm();
   });
@@ -2931,6 +2955,793 @@ const HistoryScreen: React.FC<{
   );
 };
 
+// ─── Screen: Monthly To-Do List ──────────────────────────────────────────────
+
+interface MonthlyTodoScreenProps {
+  user: User;
+  invoices: Invoice[];
+  onTriggerInvoiceCreate: (projectName: string, customerName: string, monthlyTarget?: number, clickCharge?: number) => void;
+}
+
+const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user, invoices, onTriggerInvoiceCreate }) => {
+  const [tasks, setTasks] = useState<ReceivableMonthlyTask[]>([]);
+  const [projects, setProjects] = useState<PMProject[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [loading, setLoading] = useState(false);
+  const [subTab, setSubTab] = useState<'tasks' | 'projects'>('tasks');
+  
+  // Filters
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'In Progress' | 'Completed' | 'Skipped' | 'Overdue'>('All');
+  
+  // Add Project state
+  const [showAddProjectModal, setShowAddProjectModal] = useState(false);
+  const [newProject, setNewProject] = useState({ name: '', location: '', monthlyVolume: '', clickCharge: '', startDate: '' });
+  const [addProjectLoading, setAddProjectLoading] = useState(false);
+  const [projectError, setProjectError] = useState('');
+
+  // Task Details & Completion state
+  const [selectedTask, setSelectedTask] = useState<ReceivableMonthlyTask | null>(null);
+  const [showTaskDetailsModal, setShowTaskDetailsModal] = useState(false);
+  const [completionNote, setCompletionNote] = useState('');
+  const [completingTask, setCompletingTask] = useState(false);
+  
+  // Toast
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastType, setToastType] = useState<'success' | 'error'>('success');
+
+  const [year, month] = useMemo(() => {
+    const parts = selectedMonth.split('-');
+    return [parseInt(parts[0]), parseInt(parts[1])];
+  }, [selectedMonth]);
+
+  const triggerToast = (msg: string, type: 'success' | 'error' = 'success') => {
+    setToastMessage(msg);
+    setToastType(type);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const loadData = async (forceRegenerate = false) => {
+    setLoading(true);
+    try {
+      // 1. Load active projects
+      const projs = await PMStorageService.getProjects();
+      const filtered = projs.filter(p => !p.name.includes('Storage') && !p.name.includes('المخزن'));
+      setProjects(filtered);
+
+      // 2. Generate/Load monthly tasks
+      let list = await ReceivableTodoService.loadMonthlyTasks(month, year);
+      
+      // Auto-generate if missing or forced
+      if (list.length === 0 || forceRegenerate) {
+        list = await ReceivableTodoService.generateMonthlyTasks(month, year, filtered, user.username);
+      }
+      setTasks(list);
+    } catch (err: any) {
+      triggerToast(`فشل تحميل البيانات: ${err?.message || 'خطأ غير معروف'}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [selectedMonth]);
+
+  // Handle manual task update
+  const handleUpdateTaskStatus = async (task: ReceivableMonthlyTask, newStatus: ReceivableMonthlyTask['status'], note = '') => {
+    setCompletingTask(true);
+    try {
+      const updated: ReceivableMonthlyTask = {
+        ...task,
+        status: newStatus,
+        notes: note || task.notes,
+        completed_at: newStatus === 'Completed' ? new Date().toISOString() : undefined,
+        completed_by: newStatus === 'Completed' ? user.name || user.username : undefined,
+        completion_note: note || undefined,
+        updated_by: user.username,
+        updated_at: new Date().toISOString()
+      };
+      await ReceivableTodoService.upsertMonthlyTask(updated);
+      setTasks(prev => prev.map(t => t.id === task.id ? updated : t));
+      setShowTaskDetailsModal(false);
+      setCompletionNote('');
+      triggerToast('تم تحديث حالة المهمة بنجاح', 'success');
+    } catch (err: any) {
+      triggerToast(`فشل تحديث المهمة: ${err?.message || 'خطأ'}`, 'error');
+    } finally {
+      setCompletingTask(false);
+    }
+  };
+
+  // Create new project
+  const handleAddProjectSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProjectError('');
+    if (!newProject.name.trim() || !newProject.location.trim()) {
+      setProjectError('يرجى ملء جميع الحقول الإلزامية');
+      return;
+    }
+    
+    // Check duplicates
+    const duplicate = projects.some(p => p.name.trim().toLowerCase() === newProject.name.trim().toLowerCase());
+    if (duplicate) {
+      setProjectError('هذا المشروع مسجل بالفعل في النظام');
+      return;
+    }
+
+    setAddProjectLoading(true);
+    try {
+      const vol = parseInt(newProject.monthlyVolume) || 0;
+      const charge = parseFloat(newProject.clickCharge) || 0;
+      
+      const created = await StorageService.createProject(
+        newProject.name.trim(),
+        newProject.location.trim(),
+        newProject.startDate || undefined,
+        vol,
+        charge
+      );
+
+      if (!created) {
+        throw new Error('فشل إدراج المشروع في قاعدة البيانات');
+      }
+
+      triggerToast('تم تسجيل المشروع بنجاح وتوليد مهمته الشهرية', 'success');
+      setShowAddProjectModal(false);
+      setNewProject({ name: '', location: '', monthlyVolume: '', clickCharge: '', startDate: '' });
+      
+      // Reload to regenerate billing task automatically
+      await loadData(true);
+    } catch (err: any) {
+      setProjectError(err?.message || 'فشل في حفظ المشروع');
+    } finally {
+      setAddProjectLoading(false);
+    }
+  };
+
+  // Helper: check if a project has been invoiced in the invoices list for the selected month/year
+  const getAutoInvoiceInfo = (projectName: string) => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const matchStr = `${year}-${pad(month)}`;
+    
+    const matching = invoices.find(inv => {
+      const nameMatch = (inv.projectName || '').trim() === projectName.trim();
+      const dateMatch = (inv.invoiceDate || '').startsWith(matchStr);
+      return nameMatch && dateMatch;
+    });
+
+    return matching ? { hasInvoice: true, invoiceNo: matching.invoiceNo, total: matching.total } : { hasInvoice: false };
+  };
+
+  // Reminders check: Is the task overdue?
+  const isTaskOverdue = (task: ReceivableMonthlyTask) => {
+    if (task.status === 'Completed' || task.status === 'Skipped') return false;
+    const today = new Date().toISOString().slice(0, 10);
+    return task.due_date < today;
+  };
+
+  // Filter tasks
+  const filteredTasks = useMemo(() => {
+    return tasks.filter(task => {
+      const proj = projects.find(p => p.id === task.project_id);
+      const projName = proj ? proj.name : '';
+      const matchSearch = projName.toLowerCase().includes(search.toLowerCase()) || task.title.toLowerCase().includes(search.toLowerCase());
+      
+      const autoInvoice = getAutoInvoiceInfo(projName);
+      const isCompleted = task.status === 'Completed' || autoInvoice.hasInvoice;
+      const isOverdue = isTaskOverdue(task);
+
+      let matchStatus = true;
+      if (statusFilter === 'Pending') matchStatus = task.status === 'Pending' && !autoInvoice.hasInvoice;
+      else if (statusFilter === 'In Progress') matchStatus = task.status === 'In Progress';
+      else if (statusFilter === 'Completed') matchStatus = isCompleted;
+      else if (statusFilter === 'Skipped') matchStatus = task.status === 'Skipped';
+      else if (statusFilter === 'Overdue') matchStatus = isOverdue;
+
+      return matchSearch && matchStatus;
+    });
+  }, [tasks, projects, search, statusFilter, invoices]);
+
+  // Statistics Calculation
+  const stats = useMemo(() => {
+    const activeProjsCount = projects.length;
+    const requiredInvoicingCount = activeProjsCount;
+    let completedCount = 0;
+    let pendingCount = 0;
+    let overdueCount = 0;
+
+    projects.forEach(p => {
+      const task = tasks.find(t => t.project_id === p.id);
+      const auto = getAutoInvoiceInfo(p.name);
+      const isCompleted = (task?.status === 'Completed') || auto.hasInvoice;
+      
+      if (isCompleted) {
+        completedCount++;
+      } else {
+        pendingCount++;
+        if (task && isTaskOverdue(task)) {
+          overdueCount++;
+        }
+      }
+    });
+
+    return {
+      activeProjsCount,
+      requiredInvoicingCount,
+      completedCount,
+      pendingCount,
+      overdueCount
+    };
+  }, [projects, tasks, invoices]);
+
+  return (
+    <div className="space-y-6">
+      {/* Toast Alert */}
+      {toastMessage && (
+        <div className={`fixed top-5 left-5 z-50 px-4 py-3 rounded-lg shadow-xl text-sm font-semibold border flex items-center gap-2 transition-all animate-bounce ${
+          toastType === 'success' 
+            ? 'bg-green-950/90 border-green-700 text-green-300' 
+            : 'bg-red-950/90 border-red-700 text-red-300'
+        }`}>
+          <span className="material-icons text-base">{toastType === 'success' ? 'check_circle' : 'error'}</span>
+          {toastMessage}
+        </div>
+      )}
+
+      {/* Summary KPI Strip */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-[#232b3e] rounded-xl p-4 border border-gray-700">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="material-icons text-lg text-blue-400">inventory_2</span>
+            <span className="text-gray-400 text-xs">إجمالي المشاريع</span>
+          </div>
+          <p className="text-2xl font-bold text-white">{stats.activeProjsCount}</p>
+          <p className="text-gray-500 text-xs">مشاريع نشطة مسجّلة</p>
+        </div>
+
+        <div className="bg-[#232b3e] rounded-xl p-4 border border-gray-700">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="material-icons text-lg text-yellow-400">receipt_long</span>
+            <span className="text-gray-400 text-xs">مطلوب فوترتها</span>
+          </div>
+          <p className="text-2xl font-bold text-white">{stats.requiredInvoicingCount}</p>
+          <p className="text-gray-500 text-xs">لهذا الشهر الجاري</p>
+        </div>
+
+        <div className="bg-[#232b3e] rounded-xl p-4 border border-gray-700">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="material-icons text-lg text-green-400">check_circle</span>
+            <span className="text-gray-400 text-xs">المهام المكتملة</span>
+          </div>
+          <p className="text-2xl font-bold text-white">{stats.completedCount}</p>
+          <div className="flex items-center justify-between mt-1">
+            <span className="text-gray-500 text-xs">معدل الإنجاز</span>
+            <span className="text-green-400 text-xs font-semibold">
+              {stats.requiredInvoicingCount > 0 ? Math.round((stats.completedCount / stats.requiredInvoicingCount) * 100) : 0}%
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-[#232b3e] rounded-xl p-4 border border-gray-700">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="material-icons text-lg text-red-400">warning</span>
+            <span className="text-gray-400 text-xs">المهام المعلقة / المتأخرة</span>
+          </div>
+          <p className="text-2xl font-bold text-white">{stats.pendingCount}</p>
+          <p className="text-red-400 text-xs font-semibold">منها {stats.overdueCount} متأخرة مستحقة</p>
+        </div>
+      </div>
+
+      {/* Toolbar / Filters */}
+      <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+        <div className="flex gap-2 flex-1 max-w-lg">
+          <div className="relative flex-1">
+            <span className="material-icons absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-lg">search</span>
+            <input
+              type="text"
+              placeholder="بحث باسم المشروع أو عنوان المهمة..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full bg-[#1b2130] border border-gray-700 rounded-lg pr-10 pl-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value as any)}
+            className="bg-[#1b2130] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+          >
+            <option value="All">جميع الحالات</option>
+            <option value="Pending">معلقة (Pending)</option>
+            <option value="In Progress">قيد العمل (In Progress)</option>
+            <option value="Completed">مكتملة (Completed)</option>
+            <option value="Skipped">متخطاة (Skipped)</option>
+            <option value="Overdue">متأخرة مستحقة (Overdue)</option>
+          </select>
+        </div>
+
+        <div className="flex gap-2 items-center">
+          <input
+            type="month"
+            value={selectedMonth}
+            onChange={e => setSelectedMonth(e.target.value)}
+            className="bg-[#1b2130] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary font-bold"
+          />
+          
+          <button
+            type="button"
+            onClick={() => loadData(true)}
+            title="إعادة توليد وتحديث المهام الشهرية للمشاريع"
+            className="flex items-center gap-1.5 bg-[#1b2130] hover:bg-[#2d3648] border border-gray-700 text-gray-300 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+          >
+            <span className="material-icons text-base">cached</span>
+            تحديث
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowAddProjectModal(true)}
+            className="flex items-center gap-1.5 bg-primary hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+          >
+            <span className="material-icons text-base">add</span>
+            تسجيل مشروع
+          </button>
+        </div>
+      </div>
+
+      {/* Sub-Tabs View */}
+      <div className="space-y-4">
+        <div className="flex border-b border-gray-700">
+          <button
+            type="button"
+            onClick={() => setSubTab('tasks')}
+            className={`px-5 py-2.5 text-sm font-semibold transition-colors border-b-2 -mb-px flex items-center gap-1.5 ${
+              subTab === 'tasks' 
+                ? 'border-primary text-primary' 
+                : 'border-transparent text-gray-400 hover:text-white'
+            }`}
+          >
+            <span className="material-icons text-sm">assignment_turned_in</span>
+            سجل المهام الشهرية ({filteredTasks.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSubTab('projects')}
+            className={`px-5 py-2.5 text-sm font-semibold transition-colors border-b-2 -mb-px flex items-center gap-1.5 ${
+              subTab === 'projects' 
+                ? 'border-primary text-primary' 
+                : 'border-transparent text-gray-400 hover:text-white'
+            }`}
+          >
+            <span className="material-icons text-sm">business</span>
+            قائمة المشاريع النشطة ({projects.length})
+          </button>
+        </div>
+
+        {/* ── Sub-Tab Content: Tasks List ── */}
+        {subTab === 'tasks' && (
+          <div className="bg-[#232b3e] rounded-xl border border-gray-700 overflow-hidden">
+            {loading ? (
+              <div className="p-12 text-center text-gray-400 flex flex-col items-center gap-2">
+                <span className="material-icons animate-spin text-3xl text-primary">donut_large</span>
+                <span>جاري تحميل قائمة المهام وتوليدها...</span>
+              </div>
+            ) : filteredTasks.length === 0 ? (
+              <div className="p-12 text-center text-gray-500">لا توجد مهام مطابقة للفلترة الحالية</div>
+            ) : (
+              <table className="w-full text-sm text-right">
+                <thead>
+                  <tr className="text-gray-500 text-xs border-b border-gray-700 bg-[#1b2130]">
+                    <th className="px-5 py-3">عنوان المهمة التذكيرية</th>
+                    <th className="px-5 py-3">المشروع</th>
+                    <th className="px-5 py-3">تاريخ الاستحقاق</th>
+                    <th className="px-5 py-3">الحالة الحالية</th>
+                    <th className="px-5 py-3">التنبيهات</th>
+                    <th className="px-5 py-3">المسؤول</th>
+                    <th className="px-5 py-3"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700/50">
+                  {filteredTasks.map(task => {
+                    const proj = projects.find(p => p.id === task.project_id);
+                    const projName = proj ? proj.name : 'Unknown';
+                    const auto = getAutoInvoiceInfo(projName);
+                    
+                    const isCompleted = task.status === 'Completed' || auto.hasInvoice;
+                    const isOverdue = isTaskOverdue(task);
+                    
+                    return (
+                      <tr 
+                        key={task.id} 
+                        className={`hover:bg-[#2d3648] transition-colors cursor-pointer ${
+                          isOverdue ? 'bg-red-950/10' : ''
+                        }`}
+                        onClick={() => { setSelectedTask(task); setShowTaskDetailsModal(true); }}
+                      >
+                        <td className="px-5 py-4">
+                          <p className="text-white font-medium">{task.title}</p>
+                          <p className="text-xs text-gray-500 font-mono mt-0.5">ID: {task.id.slice(0, 8)}</p>
+                        </td>
+                        <td className="px-5 py-4 text-gray-300 font-medium">{projName}</td>
+                        <td className="px-5 py-4 text-gray-300">{task.due_date}</td>
+                        <td className="px-5 py-4">
+                          {auto.hasInvoice ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-900/50 text-green-400 border border-green-500/20">
+                              <span className="material-icons text-xs">auto_awesome</span>
+                              مكتملة (تلقائي)
+                            </span>
+                          ) : task.status === 'Completed' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-900/30 text-green-400">
+                              مكتملة (يدوي)
+                            </span>
+                          ) : isOverdue ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-900/40 text-red-400 animate-pulse">
+                              متأخرة مستحقة
+                            </span>
+                          ) : task.status === 'In Progress' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-900/40 text-blue-300">
+                              قيد المتابعة
+                            </span>
+                          ) : task.status === 'Skipped' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-700 text-gray-400">
+                              متخطاة
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-800 text-gray-400">
+                              معلقة
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4">
+                          {isCompleted ? (
+                            <span className="text-gray-500 text-xs">لا توجد تنبيهات</span>
+                          ) : isOverdue ? (
+                            <span className="text-red-400 text-xs font-bold flex items-center gap-1">
+                              <span className="material-icons text-xs">notification_important</span>
+                              تنبيه متأخر!
+                            </span>
+                          ) : (
+                            <span className="text-yellow-400 text-xs flex items-center gap-1">
+                              <span className="material-icons text-xs">watch_later</span>
+                              مجدولة التذكير
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4 text-xs text-gray-400">{task.completed_by || '—'}</td>
+                        <td className="px-5 py-4">
+                          <span className="material-icons text-gray-500 text-base">chevron_left</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
+        {/* ── Sub-Tab Content: Projects List ── */}
+        {subTab === 'projects' && (
+          <div className="bg-[#232b3e] rounded-xl border border-gray-700 overflow-hidden">
+            {projects.length === 0 ? (
+              <div className="p-12 text-center text-gray-500">لا توجد مشاريع نشطة مسجّلة حالياً في النظام.</div>
+            ) : (
+              <table className="w-full text-sm text-right">
+                <thead>
+                  <tr className="text-gray-500 text-xs border-b border-gray-700 bg-[#1b2130]">
+                    <th className="px-5 py-3">اسم المشروع</th>
+                    <th className="px-5 py-3">موقع العمل</th>
+                    <th className="px-5 py-3">المستهدف الشهري للوحدات</th>
+                    <th className="px-5 py-3">سعر النقرة / الوحدة</th>
+                    <th className="px-5 py-3">تاريخ البدء</th>
+                    <th className="px-5 py-3 text-center">حالة الفاتورة لهذا الشهر</th>
+                    <th className="px-5 py-3"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700/50">
+                  {projects.map(proj => {
+                    const auto = getAutoInvoiceInfo(proj.name);
+                    return (
+                      <tr key={proj.id} className="hover:bg-[#2d3648] transition-colors">
+                        <td className="px-5 py-4">
+                          <p className="text-white font-semibold">{proj.name}</p>
+                          <p className="text-xs text-gray-500 font-mono mt-0.5">Code ID: {proj.id.slice(0, 8)}</p>
+                        </td>
+                        <td className="px-5 py-4 text-gray-300">{proj.location}</td>
+                        <td className="px-5 py-4 text-gray-300 font-mono">{proj.contract_monthly_volume ? proj.contract_monthly_volume.toLocaleString() : '0'}</td>
+                        <td className="px-5 py-4 text-gray-300 font-mono">{proj.click_charge ? `${proj.click_charge} EGP` : '—'}</td>
+                        <td className="px-5 py-4 text-gray-400 text-xs">{proj.start_date || '—'}</td>
+                        <td className="px-5 py-4 text-center">
+                          {auto.hasInvoice ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-950/40 border border-green-700/60 text-green-300">
+                              <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
+                              تمت الفوترة ({auto.invoiceNo})
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-950/40 border border-red-700/60 text-red-400">
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-400"></span>
+                              لم تتم الفوترة بعد
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4">
+                          {!auto.hasInvoice && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onTriggerInvoiceCreate(proj.name, proj.name, proj.contract_monthly_volume, proj.click_charge);
+                              }}
+                              className="px-3 py-1.5 bg-blue-900/60 hover:bg-blue-700 text-blue-300 hover:text-white rounded text-xs font-semibold transition-colors flex items-center gap-1"
+                            >
+                              <span className="material-icons text-xs">add_box</span>
+                              إنشاء الفاتورة
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Modal: Task Details & Completion ── */}
+      {showTaskDetailsModal && selectedTask && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" dir="rtl">
+          <div className="bg-[#232b3e] rounded-xl border border-gray-700 shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in">
+            <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="material-icons text-primary">assignment_turned_in</span>
+                <h3 className="font-bold text-white">تفاصيل المهمة والمتابعة</h3>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => { setSelectedTask(null); setShowTaskDetailsModal(false); setCompletionNote(''); }}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <span className="material-icons">close</span>
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="bg-[#1b2130] p-4 rounded-lg space-y-2 border border-gray-700/50">
+                <h4 className="text-white font-semibold text-base">{selectedTask.title}</h4>
+                <p className="text-gray-400 text-xs flex items-center gap-1">
+                  <span className="material-icons text-xs">calendar_today</span>
+                  المطالبة لشهر: {selectedTask.task_month}/{selectedTask.task_year}
+                </p>
+                <p className="text-gray-400 text-xs flex items-center gap-1">
+                  <span className="material-icons text-xs">warning_amber</span>
+                  تاريخ الاستحقاق: {selectedTask.due_date}
+                </p>
+              </div>
+
+              {/* Invoiced Status details */}
+              {(() => {
+                const proj = projects.find(p => p.id === selectedTask.project_id);
+                const projName = proj ? proj.name : '';
+                const auto = getAutoInvoiceInfo(projName);
+                if (auto.hasInvoice) {
+                  return (
+                    <div className="bg-green-950/30 border border-green-800/40 rounded-lg p-3 text-sm text-green-300 space-y-1">
+                      <p className="font-bold flex items-center gap-1">
+                        <span className="material-icons text-sm">check_circle</span>
+                        تم التحقق من الفوترة تلقائياً
+                      </p>
+                      <p className="text-xs text-green-400">سجل النظام فاتورة مفعلة لهذا المشروع برقم: <strong>{auto.invoiceNo}</strong> بإجمالي <strong>{auto.total?.toLocaleString()} EGP</strong>.</p>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              {selectedTask.status === 'Completed' ? (
+                <div className="bg-green-950/20 border border-green-900/50 p-4 rounded-lg space-y-1 text-sm text-green-300">
+                  <p className="font-bold">المهمة مكتملة يدويًا</p>
+                  <p className="text-xs">المسؤول: {selectedTask.completed_by}</p>
+                  <p className="text-xs">تاريخ الإنجاز: {selectedTask.completed_at ? new Date(selectedTask.completed_at).toLocaleString('ar-EG') : '—'}</p>
+                  {selectedTask.completion_note && (
+                    <p className="text-xs mt-2 border-t border-green-900/30 pt-2 text-gray-300">ملاحظة: {selectedTask.completion_note}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <Field label="ملاحظات / تعليق المتابعة">
+                    <textarea
+                      value={completionNote}
+                      onChange={e => setCompletionNote(e.target.value)}
+                      rows={3}
+                      placeholder="أدخل ملاحظات حول الفاتورة، أو أسباب التأخير أو أي تفاصيل أخرى..."
+                      className={`${inputCls} resize-none`}
+                    />
+                  </Field>
+                  
+                  {isTaskOverdue(selectedTask) && (
+                    <div className="bg-red-950/20 border border-red-900/40 text-red-300 p-3 rounded-lg text-xs flex items-center gap-1.5">
+                      <span className="material-icons text-sm">notification_important</span>
+                      المهمة متأخرة عن تاريخ الاستحقاق. يرجى توثيق سبب التأخر في الملاحظات.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Audit trail visualization */}
+              <div className="border-t border-gray-700/60 pt-3">
+                <span className="text-xs font-semibold text-gray-500 uppercase block mb-2">سجل المتابعة والتعديلات</span>
+                <div className="font-mono text-xs text-gray-400 bg-[#1b2130] p-3 rounded border border-gray-800 space-y-1 max-h-24 overflow-y-auto">
+                  <p className="flex justify-between">
+                    <span>• تم إنشاء التذكير التلقائي:</span>
+                    <span className="text-gray-600">{selectedTask.created_at ? new Date(selectedTask.created_at).toLocaleDateString() : '—'}</span>
+                  </p>
+                  {selectedTask.completed_at && (
+                    <p className="flex justify-between text-green-400">
+                      <span>• تم تأكيد الإنجاز بواسطة {selectedTask.completed_by}:</span>
+                      <span>{new Date(selectedTask.completed_at).toLocaleDateString()}</span>
+                    </p>
+                  )}
+                  {selectedTask.notes && (
+                    <p className="text-gray-500">ملاحظة مسجّلة: {selectedTask.notes}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-[#1b2130] border-t border-gray-700 flex gap-2">
+              {selectedTask.status !== 'Completed' && !getAutoInvoiceInfo(projects.find(p => p.id === selectedTask.project_id)?.name || '').hasInvoice && (
+                <>
+                  <button
+                    type="button"
+                    disabled={completingTask}
+                    onClick={() => handleUpdateTaskStatus(selectedTask, 'Completed', completionNote)}
+                    className="flex-1 bg-green-700 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-40"
+                  >
+                    إنجاز الفوترة
+                  </button>
+                  <button
+                    type="button"
+                    disabled={completingTask}
+                    onClick={() => {
+                      const proj = projects.find(p => p.id === selectedTask.project_id);
+                      if (proj) {
+                        setShowTaskDetailsModal(false);
+                        onTriggerInvoiceCreate(proj.name, proj.name, proj.contract_monthly_volume, proj.click_charge);
+                      }
+                    }}
+                    className="bg-blue-700 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1"
+                  >
+                    <span className="material-icons text-sm">receipt</span>
+                    الذهاب للفوترة
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                onClick={() => { setSelectedTask(null); setShowTaskDetailsModal(false); setCompletionNote(''); }}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg text-sm font-semibold transition-colors mr-auto"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Add New Project ── */}
+      {showAddProjectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" dir="rtl">
+          <div className="bg-[#232b3e] rounded-xl border border-gray-700 shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in">
+            <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="material-icons text-primary">add_business</span>
+                <h3 className="font-bold text-white">تسجيل مشروع جديد في النظام</h3>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setShowAddProjectModal(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <span className="material-icons">close</span>
+              </button>
+            </div>
+            
+            <form onSubmit={handleAddProjectSubmit}>
+              <div className="p-6 space-y-4">
+                {projectError && (
+                  <div className="bg-red-900/30 border border-red-700 text-red-300 p-3 rounded-lg text-xs flex items-center gap-1.5">
+                    <span className="material-icons text-sm">error</span>
+                    {projectError}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="اسم المشروع" required>
+                    <input
+                      type="text"
+                      required
+                      value={newProject.name}
+                      onChange={e => setNewProject({...newProject, name: e.target.value})}
+                      placeholder="مثال: البنك الأهلي المصري"
+                      className={inputCls}
+                    />
+                  </Field>
+                  <Field label="موقع العمل (الفرع)" required>
+                    <input
+                      type="text"
+                      required
+                      value={newProject.location}
+                      onChange={e => setNewProject({...newProject, location: e.target.value})}
+                      placeholder="مثال: القاهرة الجديدة"
+                      className={inputCls}
+                    />
+                  </Field>
+                  <Field label="المستهدف الشهري (عدد النقرات)" required>
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      value={newProject.monthlyVolume}
+                      onChange={e => setNewProject({...newProject, monthlyVolume: e.target.value})}
+                      placeholder="500000"
+                      className={inputCls}
+                    />
+                  </Field>
+                  <Field label="سعر النقرة الواحدة (EGP)" required>
+                    <input
+                      type="number"
+                      required
+                      step="any"
+                      min={0.01}
+                      value={newProject.clickCharge}
+                      onChange={e => setNewProject({...newProject, clickCharge: e.target.value})}
+                      placeholder="0.33"
+                      className={inputCls}
+                    />
+                  </Field>
+                  <div className="col-span-2">
+                    <Field label="تاريخ بدء المشروع">
+                      <input
+                        type="date"
+                        value={newProject.startDate}
+                        onChange={e => setNewProject({...newProject, startDate: e.target.value})}
+                        className={inputCls}
+                      />
+                    </Field>
+                  </div>
+                </div>
+
+                <div className="bg-blue-950/20 border border-blue-900/50 p-3 rounded-lg text-xs text-blue-300">
+                  سيتم حفظ هذا المشروع في قاعدة البيانات الرئيسية للمشاريع، وسيقوم النظام تلقائياً بإنشاء المهام التذكيرية الشهرية الخاصة به بمجرد الحفظ.
+                </div>
+              </div>
+
+              <div className="px-6 py-4 bg-[#1b2130] border-t border-gray-700 flex gap-2">
+                <button
+                  type="submit"
+                  disabled={addProjectLoading}
+                  className="flex-1 bg-primary hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-40"
+                >
+                  {addProjectLoading ? 'جاري الحفظ وتوليد المهام...' : 'حفظ وتسجيل المشروع'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAddProjectModal(false)}
+                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg text-sm font-semibold transition-colors mr-auto"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Shared UI Atoms ──────────────────────────────────────────────────────────
 
 const inputCls = 'w-full bg-[#1b2130] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary';
@@ -2994,10 +3805,35 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
   }, []);
 
   const [screen, setScreen] = useState<Screen>('dashboard');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'invoice-list' | 'payment-entry' | 'history'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'invoice-list' | 'payment-entry' | 'history' | 'monthly-todo'>('dashboard');
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
+  const [prepopulatedInvoice, setPrepopulatedInvoice] = useState<Partial<Invoice> | null>(null);
+
+  const handleTriggerInvoiceCreate = (projectName: string, customerName: string, monthlyTarget?: number, clickCharge?: number) => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const today = new Date();
+    const month = today.getMonth() + 1;
+    const year = today.getFullYear();
+    const dateStr = `${year}-${pad(month)}-${pad(today.getDate())}`;
+    
+    // Estimate volume * clickCharge
+    const amt = (monthlyTarget || 0) * (clickCharge || 0);
+    const tax = Math.round(amt * 0.14 * 100) / 100;
+    
+    setPrepopulatedInvoice({
+      projectName,
+      customer: customerName,
+      amount: amt,
+      tax: tax,
+      total: amt + tax,
+      invoiceDate: dateStr,
+      dueDate: `${year}-${pad(month + 1 > 12 ? 12 : month + 1)}-25`,
+    });
+    setEditingInvoice(null);
+    setScreen('create-invoice');
+  };
 
   // ── Navigation helpers ──
 
@@ -3023,7 +3859,8 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
   };
 
   const goBack = () => {
-    const target = activeTab === 'invoice-list' ? 'invoice-list' : 'dashboard';
+    const target = activeTab === 'invoice-list' ? 'invoice-list' : 
+                   activeTab === 'monthly-todo' ? 'monthly-todo' : 'dashboard';
     setScreen(target);
   };
 
@@ -3063,7 +3900,10 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
         projectName: newInv.projectName,
       }).catch(() => {/* non-blocking */});
     }
-    setScreen(activeTab === 'invoice-list' ? 'invoice-list' : 'dashboard');
+    setScreen(
+      activeTab === 'invoice-list' ? 'invoice-list' : 
+      activeTab === 'monthly-todo' ? 'monthly-todo' : 'dashboard'
+    );
   };
 
   const updateCollection = (data: Pick<Invoice, 'collectionStatus' | 'lastFollowUp' | 'nextFollowUp' | 'notes'>) => {
@@ -3221,7 +4061,7 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
       </div>
 
       {/* Tab Bar — only show when not on detail / create screens */}
-      {(screen === 'dashboard' || screen === 'invoice-list' || screen === 'payment-entry' || screen === 'history') && (
+      {(screen === 'dashboard' || screen === 'invoice-list' || screen === 'payment-entry' || screen === 'history' || screen === 'monthly-todo') && (
         <div className="flex gap-1 bg-[#1b2130] p-1 rounded-xl w-fit">
           {TABS.map(tab => (
             <button
@@ -3257,7 +4097,7 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
         />
       )}
       {screen === 'create-invoice' && (
-        <CreateInvoiceScreen editing={editingInvoice} invoices={invoices} onSave={saveInvoice} onAddCreditNote={editingInvoice ? saveCreditNote : undefined} onCancel={goBack} user={user} />
+        <CreateInvoiceScreen editing={editingInvoice} prepopulatedData={prepopulatedInvoice} invoices={invoices} onSave={saveInvoice} onAddCreditNote={editingInvoice ? saveCreditNote : undefined} onCancel={goBack} user={user} />
       )}
       {screen === 'invoice-details' && selectedInvoice && (
         <InvoiceDetailsScreen
@@ -3292,6 +4132,13 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
           canEdit={user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'admin' || (user.username || '').toLowerCase() === 'taher.mohamed@pbkadvisory.com'}
           onDeletePayment={deletePayment}
           onEditPayment={(invoiceId, payment) => updatePayment(invoiceId, payment.id, payment)}
+        />
+      )}
+      {screen === 'monthly-todo' && (
+        <MonthlyTodoScreen
+          user={user}
+          invoices={invoices}
+          onTriggerInvoiceCreate={handleTriggerInvoiceCreate}
         />
       )}
     </div>
