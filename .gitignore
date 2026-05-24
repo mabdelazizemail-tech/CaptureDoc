@@ -24,3 +24,9 @@ dist-ssr
 *.sw?
 
 .vercel
+
+# Sensitive credentials
+ERP einvoice portal.txt
+
+# Temporary local PDFs
+*.pdf

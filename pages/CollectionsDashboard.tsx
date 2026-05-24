@@ -2089,6 +2089,23 @@ const InvoiceDetailsScreen: React.FC<{
           </div>
         </>
       )}
+
+      {/* PDF Attachment Preview */}
+      {invoice.pdfData && (
+        <div className="bg-[#232b3e] rounded-xl border border-gray-700 overflow-hidden mt-5">
+          <div className="px-5 py-4 border-b border-gray-700 flex items-center gap-3">
+            <span className="material-icons text-orange-400 text-base">picture_as_pdf</span>
+            <h3 className="font-semibold text-white text-sm">نسخة الفاتورة</h3>
+            {invoice.pdfName && <span className="text-gray-500 text-xs mr-auto">{invoice.pdfName}</span>}
+          </div>
+          <iframe
+            src={invoice.pdfData}
+            title="نسخة الفاتورة"
+            className="w-full"
+            style={{ height: '600px', background: '#fff' }}
+          />
+        </div>
+      )}
     </div>
   );
 };
