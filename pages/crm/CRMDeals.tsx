@@ -233,7 +233,7 @@ export default function CRMDeals({ user }: { user: User }) {
       </div>
 
       {/* Kanban Board */}
-      <div className="flex-1 flex space-x-4 overflow-x-auto pb-4 items-stretch">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-4 pb-4 items-stretch">
         {STAGES.map((stage) => {
           const stageDeals = deals.filter(d => d.stage === stage && (filterCreatedBy === 'All' || d.created_by === filterCreatedBy));
           const totalVal = stageDeals.reduce((sum, d) => sum + (d.value || 0), 0);
@@ -241,7 +241,7 @@ export default function CRMDeals({ user }: { user: User }) {
           return (
             <div
               key={stage}
-              className="w-72 flex-shrink-0 bg-[var(--card)] border border-[var(--border)] rounded-lg flex flex-col overflow-hidden shadow-sm"
+              className="bg-[var(--card)] border border-[var(--border)] rounded-lg flex flex-col overflow-hidden shadow-sm min-w-0"
               onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, stage)}
             >
@@ -501,7 +501,16 @@ export default function CRMDeals({ user }: { user: User }) {
                   <label className="block text-xs font-medium text-[var(--muted-foreground)] mb-1.5">Account (Company)</label>
                   <select
                     value={companyId}
-                    onChange={(e) => setCompanyId(e.target.value)}
+                    onChange={(e) => {
+                      const newCompanyId = e.target.value;
+                      setCompanyId(newCompanyId);
+                      if (newCompanyId && contactId) {
+                        const selectedContact = contacts.find(c => c.id === contactId);
+                        if (selectedContact && selectedContact.company_id !== newCompanyId) {
+                          setContactId('');
+                        }
+                      }
+                    }}
                     className="w-full h-9 px-3 border border-[var(--border)] rounded-md bg-[var(--card)] text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
                   >
                     <option value="">Select Account...</option>
@@ -514,13 +523,24 @@ export default function CRMDeals({ user }: { user: User }) {
                   <label className="block text-xs font-medium text-[var(--muted-foreground)] mb-1.5">Primary Contact</label>
                   <select
                     value={contactId}
-                    onChange={(e) => setContactId(e.target.value)}
+                    onChange={(e) => {
+                      const newContactId = e.target.value;
+                      setContactId(newContactId);
+                      if (newContactId && !companyId) {
+                        const selectedContact = contacts.find(c => c.id === newContactId);
+                        if (selectedContact && selectedContact.company_id) {
+                          setCompanyId(selectedContact.company_id);
+                        }
+                      }
+                    }}
                     className="w-full h-9 px-3 border border-[var(--border)] rounded-md bg-[var(--card)] text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
                   >
                     <option value="">Select Contact...</option>
-                    {contacts.map(c => (
-                      <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
-                    ))}
+                    {contacts
+                      .filter(c => !companyId || c.company_id === companyId)
+                      .map(c => (
+                        <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
+                      ))}
                   </select>
                 </div>
               </div>
