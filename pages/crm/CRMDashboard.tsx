@@ -128,7 +128,22 @@ export default function CRMDashboard({ user }: Props) {
     label: maxVal > 0 ? fmt(maxVal * p) : '$0',
   }));
 
-  const displayName = user.name || user.username || 'User';
+  const formatDisplayName = (rawName: string): string => {
+    if (!rawName) return 'User';
+    const emailPrefix = rawName.includes('@') ? rawName.split('@')[0] : rawName;
+    const parts = emailPrefix.split(/[._-]/);
+    if (parts.length > 1) {
+      return parts
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+        .join(' ');
+    }
+    return emailPrefix
+      .split(/\s+/)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  };
+
+  const displayName = formatDisplayName(user.name || user.username || 'User');
   const today = new Date().toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   });
