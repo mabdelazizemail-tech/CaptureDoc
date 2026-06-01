@@ -1054,7 +1054,10 @@ const CreateInvoiceScreen: React.FC<{
     setEtaImporting(row.uuid);
     try {
       const data = await etaCall({ action: 'get', uuid: row.uuid });
-      const inv = data.ok ? data.invoice : null;
+      if (!data.ok) {
+        throw new Error(data.error || 'خطأ غير معروف من بوابة الضرائب');
+      }
+      const inv = data.invoice;
 
       // Duplicate checking for direct import (where internalId was not originally present)
       if (inv && !row.internalId && isImported(inv.invoiceNo)) {
@@ -1084,15 +1087,19 @@ const CreateInvoiceScreen: React.FC<{
         };
       });
       setEtaOpen(false);
-    } catch {
-      const add30 = (iso: string) => { const d = new Date(iso); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); };
-      setForm(f => {
-        const amt = row.netAmount || f.amount;
-        const tax = Math.round(amt * 0.14 * 100) / 100;
-        const rate = (f.invoiceType === 'خدمات') ? 0.03 : 0.01;
-        return { ...f, invoiceNo: row.internalId || f.invoiceNo, invoiceDate: row.dateTimeIssued || f.invoiceDate, dueDate: row.dateTimeIssued ? add30(row.dateTimeIssued) : f.dueDate, amount: amt, tax, total: row.total || amt + tax, withholdingTax: Math.round(amt * rate * 100) / 100 };
-      });
-      setEtaOpen(false);
+    } catch (e: any) {
+      if (!row.internalId) {
+        alert(`فشل الاستيراد المباشر: ${e.message || 'تعذر جلب بيانات الفاتورة من بوابة ETA'}`);
+      } else {
+        const add30 = (iso: string) => { const d = new Date(iso); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); };
+        setForm(f => {
+          const amt = row.netAmount || f.amount;
+          const tax = Math.round(amt * 0.14 * 100) / 100;
+          const rate = (f.invoiceType === 'خدمات') ? 0.03 : 0.01;
+          return { ...f, invoiceNo: row.internalId || f.invoiceNo, invoiceDate: row.dateTimeIssued || f.invoiceDate, dueDate: row.dateTimeIssued ? add30(row.dateTimeIssued) : f.dueDate, amount: amt, tax, total: row.total || amt + tax, withholdingTax: Math.round(amt * rate * 100) / 100 };
+        });
+        setEtaOpen(false);
+      }
     } finally { setEtaImporting(''); }
   };
 

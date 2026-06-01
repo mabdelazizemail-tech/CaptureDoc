@@ -897,7 +897,12 @@ const CreateInvoiceScreen: React.FC<{
         etaFetch({ action: 'pdf', uuid: row.uuid }),
       ]);
 
-      const inv = data.status === 'fulfilled' && data.value.ok ? data.value.invoice : null;
+      if (data.status === 'rejected' || !data.value.ok) {
+        const errMsg = data.status === 'fulfilled' ? data.value.error : 'خطأ في الاتصال بالشبكة';
+        throw new Error(errMsg);
+      }
+
+      const inv = data.value.invoice;
       const pdfBase64: string | null =
         pdfData.status === 'fulfilled' && pdfData.value.ok ? pdfData.value.pdf : null;
 
@@ -935,19 +940,23 @@ const CreateInvoiceScreen: React.FC<{
       }
 
       setEtaOpen(false);
-    } catch {
-      // fall back to search-row data only
-      const addDays30 = (iso: string) => { const d = new Date(iso); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); };
-      setForm(prev => ({
-        ...prev,
-        invoiceNo:   row.internalId     || prev.invoiceNo,
-        supplier:    row.issuerName     || prev.supplier,
-        invoiceDate: row.dateTimeIssued || prev.invoiceDate,
-        dueDate:     row.dateTimeIssued ? addDays30(row.dateTimeIssued) : prev.dueDate,
-        amount:      row.netAmount > 0  ? row.netAmount : prev.amount,
-        total:       row.total     > 0  ? row.total     : prev.total,
-      }));
-      setEtaOpen(false);
+    } catch (e: any) {
+      if (!row.internalId) {
+        alert(`فشل الاستيراد المباشر: ${e.message || 'تعذر جلب بيانات الفاتورة من بوابة ETA'}`);
+      } else {
+        // fall back to search-row data only
+        const addDays30 = (iso: string) => { const d = new Date(iso); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); };
+        setForm(prev => ({
+          ...prev,
+          invoiceNo:   row.internalId     || prev.invoiceNo,
+          supplier:    row.issuerName     || prev.supplier,
+          invoiceDate: row.dateTimeIssued || prev.invoiceDate,
+          dueDate:     row.dateTimeIssued ? addDays30(row.dateTimeIssued) : prev.dueDate,
+          amount:      row.netAmount > 0  ? row.netAmount : prev.amount,
+          total:       row.total     > 0  ? row.total     : prev.total,
+        }));
+        setEtaOpen(false);
+      }
     } finally {
       setEtaImporting('');
     }
