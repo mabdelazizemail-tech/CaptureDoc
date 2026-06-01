@@ -788,6 +788,7 @@ const CreateInvoiceScreen: React.FC<{
   const [etaClientSec2, setEtaClientSec2] = useState('');
   const [showEtaCreds,  setShowEtaCreds]  = useState(false);
   const [etaImporting,  setEtaImporting]  = useState('');
+  const [directUuid,    setDirectUuid]    = useState('');
   const [etaPdfLoading, setEtaPdfLoading] = useState('');
   const [etaPdfPreview, setEtaPdfPreview] = useState<{ uuid: string; name: string; url: string } | null>(null);
 
@@ -879,11 +880,13 @@ const CreateInvoiceScreen: React.FC<{
   };
 
   const importEtaInvoice = async (row: EtaRow) => {
-    // Check if invoice already imported
-    const alreadyImported = invoices.some(inv => inv.invoiceNo === row.internalId);
-    if (alreadyImported) {
-      const proceed = window.confirm(`تنبيه: الفاتورة رقم (${row.internalId}) مستوردة بالفعل سابقاً!\nهل أنت متأكد من رغبتك في استيرادها مرة أخرى؟`);
-      if (!proceed) return;
+    // Check if invoice already imported (only if internalId is present)
+    if (row.internalId) {
+      const alreadyImported = invoices.some(inv => inv.invoiceNo === row.internalId);
+      if (alreadyImported) {
+        const proceed = window.confirm(`تنبيه: الفاتورة رقم (${row.internalId}) مستوردة بالفعل سابقاً!\nهل أنت متأكد من رغبتك في استيرادها مرة أخرى؟`);
+        if (!proceed) return;
+      }
     }
 
     setEtaImporting(row.uuid);
@@ -898,8 +901,20 @@ const CreateInvoiceScreen: React.FC<{
       const pdfBase64: string | null =
         pdfData.status === 'fulfilled' && pdfData.value.ok ? pdfData.value.pdf : null;
 
+      // Duplicate checking for direct import (where internalId was not originally present)
+      if (inv && !row.internalId) {
+        const alreadyImported = invoices.some(i => i.invoiceNo === inv.invoiceNo);
+        if (alreadyImported) {
+          const proceed = window.confirm(`تنبيه: الفاتورة رقم (${inv.invoiceNo}) مستوردة بالفعل سابقاً!\nهل أنت متأكد من رغبتك في استيرادها مرة أخرى؟`);
+          if (!proceed) {
+            setEtaImporting('');
+            return;
+          }
+        }
+      }
+
       const addDays30 = (iso: string) => { const d = new Date(iso); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); };
-      const pdfName = `${row.internalId || row.uuid}.pdf`;
+      const pdfName = `${inv?.invoiceNo || row.internalId || row.uuid}.pdf`;
 
       setForm(prev => ({
         ...prev,
@@ -936,6 +951,28 @@ const CreateInvoiceScreen: React.FC<{
     } finally {
       setEtaImporting('');
     }
+  };
+
+  const handleDirectEtaImport = async () => {
+    if (!directUuid.trim()) return;
+    const match = directUuid.match(/([A-Z0-9]{26})/i);
+    if (!match) {
+      alert('الرجاء إدخال معرف صحيح يتكون من 26 حرفاً ورقماً، أو رابط الفاتورة الكامل من البوابة.');
+      return;
+    }
+    const uuid = match[1].toUpperCase();
+    const dummyRow: EtaRow = {
+      uuid,
+      internalId: '',
+      issuerName: '',
+      issuerId: '',
+      dateTimeIssued: '',
+      netAmount: 0,
+      total: 0,
+      status: 'Valid'
+    };
+    await importEtaInvoice(dummyRow);
+    setDirectUuid('');
   };
 
   const bulkImportEtaInvoices = async () => {
@@ -1266,6 +1303,31 @@ const CreateInvoiceScreen: React.FC<{
                   نطاق {days} يوم — سيتم تقسيمه تلقائياً لعدة طلبات (قد يستغرق بضع ثوانٍ)
                 </p>
               ) : null; })()}
+            </div>
+
+            {/* Direct Import */}
+            <div className="bg-[#1b2130]/50 border border-gray-700/60 rounded-lg p-3 space-y-2">
+              <label className="block text-xs font-semibold text-gray-400">
+                استيراد مباشر برابط الفاتورة أو المعرف (UUID)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="ضع رابط الفاتورة من بوابة الضرائب أو المعرف الطويل (UUID) هنا..."
+                  value={directUuid}
+                  onChange={e => setDirectUuid(e.target.value)}
+                  className="flex-1 bg-[#1b2130] border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={handleDirectEtaImport}
+                  disabled={!directUuid.trim() || etaImporting !== ''}
+                  className="flex items-center gap-1 px-4 py-1.5 rounded-lg text-xs bg-blue-700 hover:bg-blue-600 text-white transition-colors disabled:opacity-50 whitespace-nowrap"
+                >
+                  <span className="material-icons text-sm">download</span>
+                  استيراد مباشر
+                </button>
+              </div>
             </div>
 
             {/* Status */}
