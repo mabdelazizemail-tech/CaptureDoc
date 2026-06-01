@@ -54,6 +54,9 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 function getDefaultRoute(user: User): string {
+  const emailLower = (user.email || user.username || '').toLowerCase();
+  if (emailLower === 'hossam.yazal@capture-doc.com') return '/collections';
+
   if (
     CRM_ONLY_USERS.includes((user.username || '').toLowerCase()) ||
     CRM_ONLY_USERS.includes((user.email || '').toLowerCase())
@@ -80,7 +83,7 @@ const AppShell: React.FC<{
   const pageTitle = PAGE_TITLES[pathname];
   const isHiddenPage = pathname === '/health-check' || pathname === '/debug';
   const isAdmin = user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'project_manager' || user.role === 'hr_admin';
-  const finOnly = isFinanceOnly(user);
+  const finOnly = isFinanceOnly(user) || user.email?.toLowerCase() === 'hossam.yazal@capture-doc.com';
 
   const adminDashEl = <AdminDashboard currentUser={user} onlineUsers={onlineUsers} />;
 
