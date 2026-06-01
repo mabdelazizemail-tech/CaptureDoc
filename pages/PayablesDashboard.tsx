@@ -757,10 +757,12 @@ const blankInvoice = (): PayableInvoice => ({
 const CreateInvoiceScreen: React.FC<{
   initial: PayableInvoice | null;
   projects: Project[];
+  invoices: PayableInvoice[];
   user: User;
   onSave: (inv: PayableInvoice) => void;
   onCancel: () => void;
-}> = ({ initial, onSave, onCancel, projects, user }) => {
+  onRefresh?: () => Promise<void>;
+}> = ({ initial, onSave, onCancel, projects, invoices, user, onRefresh }) => {
   const [form, setForm]   = useState<PayableInvoice>(initial ?? blankInvoice());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pdfParsing, setPdfParsing] = useState(false);
@@ -771,6 +773,7 @@ const CreateInvoiceScreen: React.FC<{
 
   // ETA import state
   interface EtaRow { uuid: string; internalId: string; issuerName: string; issuerId: string; dateTimeIssued: string; netAmount: number; total: number; status: string }
+  const [selectedEtaUuids, setSelectedEtaUuids] = useState<Set<string>>(new Set());
   const [etaOpen,       setEtaOpen]       = useState(false);
   const [etaLoading,    setEtaLoading]    = useState(false);
   const [etaError,      setEtaError]      = useState('');
@@ -876,6 +879,13 @@ const CreateInvoiceScreen: React.FC<{
   };
 
   const importEtaInvoice = async (row: EtaRow) => {
+    // Check if invoice already imported
+    const alreadyImported = invoices.some(inv => inv.invoiceNo === row.internalId);
+    if (alreadyImported) {
+      const proceed = window.confirm(`تنبيه: الفاتورة رقم (${row.internalId}) مستوردة بالفعل سابقاً!\nهل أنت متأكد من رغبتك في استيرادها مرة أخرى؟`);
+      if (!proceed) return;
+    }
+
     setEtaImporting(row.uuid);
     try {
       // Fetch full document + PDF in parallel
@@ -925,6 +935,100 @@ const CreateInvoiceScreen: React.FC<{
       setEtaOpen(false);
     } finally {
       setEtaImporting('');
+    }
+  };
+
+  const bulkImportEtaInvoices = async () => {
+    const selectedRows = etaRows.filter(r => selectedEtaUuids.has(r.uuid));
+    if (selectedRows.length === 0) return;
+
+    // Check duplicates
+    const duplicates = selectedRows.filter(row => invoices.some(inv => inv.invoiceNo === row.internalId));
+    let rowsToImport = selectedRows;
+    
+    if (duplicates.length > 0) {
+      const dupNos = duplicates.map(d => d.internalId).join(', ');
+      const proceed = window.confirm(`تنبيه: الفواتير التالية مستوردة بالفعل سابقاً:\n(${dupNos})\n\nهل تريد تخطي الفواتير المكررة واستيراد الفواتير الجديدة فقط؟\n\nاضغط "موافق" لتخطي المكرر واستيراد الجديد.\nاضغط "إلغاء" لإلغاء العملية بالكامل.`);
+      if (!proceed) return;
+      // Filter out duplicates
+      rowsToImport = selectedRows.filter(row => !invoices.some(inv => inv.invoiceNo === row.internalId));
+      if (rowsToImport.length === 0) {
+        alert('جميع الفواتير المحددة مكررة ومستوردة بالفعل سابقاً!');
+        return;
+      }
+    }
+
+    setEtaLoading(true);
+    setEtaError('');
+    
+    let successCount = 0;
+    try {
+      for (let i = 0; i < rowsToImport.length; i++) {
+        const row = rowsToImport[i];
+        setEtaImporting(`bulk-${i + 1}-of-${rowsToImport.length}`);
+        
+        let pdfBase64: string | null = null;
+        let invDetails: any = null;
+        
+        try {
+          // Fetch full document + PDF in parallel
+          const [dataRes, pdfRes] = await Promise.allSettled([
+            etaFetch({ action: 'get', uuid: row.uuid }),
+            etaFetch({ action: 'pdf', uuid: row.uuid }),
+          ]);
+          
+          if (dataRes.status === 'fulfilled' && dataRes.value.ok) {
+            invDetails = dataRes.value.invoice;
+          }
+          if (pdfRes.status === 'fulfilled' && pdfRes.value.ok) {
+            pdfBase64 = pdfRes.value.pdf;
+          }
+        } catch (err) {
+          console.error("Failed to fetch full ETA details/PDF:", err);
+        }
+
+        const addDays30 = (iso: string) => { 
+          const d = new Date(iso); 
+          d.setDate(d.getDate() + 30); 
+          return d.toISOString().slice(0, 10); 
+        };
+
+        const newPayable: PayableInvoice = {
+          id: uid(),
+          invoiceNo: invDetails?.invoiceNo || row.internalId || `ETA-${row.uuid.slice(0, 8)}`,
+          supplier: invDetails?.supplier || row.issuerName || 'مورد غير معروف',
+          costCenter: 'الإدارة العامة',
+          invoiceDate: invDetails?.invoiceDate || row.dateTimeIssued || new Date().toISOString().slice(0, 10),
+          dueDate: invDetails?.invoiceDate ? addDays30(invDetails.invoiceDate) : row.dateTimeIssued ? addDays30(row.dateTimeIssued) : new Date().toISOString().slice(0, 10),
+          amount: invDetails?.amount > 0 ? invDetails.amount : row.netAmount > 0 ? row.netAmount : 0,
+          tax: invDetails?.tax > 0 ? invDetails.tax : 0,
+          hasTax: invDetails?.tax > 0 ? true : false,
+          total: invDetails?.total > 0 ? invDetails.total : row.total > 0 ? row.total : 0,
+          invoiceType: 'خدمات',
+          approvalStatus: 'Pending',
+          paymentStatus: 'Unpaid',
+          apStatus: 'Not Due',
+          currency: 'EGP',
+          payments: [],
+          notes: 'تم استيرادها تلقائياً بالكامل من بوابة الضرائب المصرية (ETA)',
+          ...(pdfBase64 ? { pdfData: pdfBase64, pdfName: `${row.internalId || row.uuid}.pdf` } : {}),
+        };
+
+        await upsertPayable(newPayable);
+        successCount++;
+      }
+
+      alert(`تم استيراد ${successCount} فاتورة بنجاح وحفظها كطلبات اعتماد!`);
+      if (onRefresh) {
+        await onRefresh();
+      }
+    } catch (err: any) {
+      setEtaError(`حدث خطأ أثناء الاستيراد الجماعي: ${err.message}`);
+    } finally {
+      setEtaImporting('');
+      setEtaLoading(false);
+      setSelectedEtaUuids(new Set());
+      setEtaOpen(false);
     }
   };
 
@@ -1126,21 +1230,35 @@ const CreateInvoiceScreen: React.FC<{
                   );
                 })}
               </div>
-              <div className="flex gap-2 flex-wrap items-end">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">من تاريخ</label>
-                  <input type="date" value={etaDateFrom} onChange={e => setEtaDateFrom(e.target.value)}
-                    className="bg-[#1b2130] border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-blue-500" />
+              <div className="flex gap-2 flex-wrap items-end justify-between w-full">
+                <div className="flex gap-2 flex-wrap items-end">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">من تاريخ</label>
+                    <input type="date" value={etaDateFrom} onChange={e => setEtaDateFrom(e.target.value)}
+                      className="bg-[#1b2130] border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">إلى تاريخ</label>
+                    <input type="date" value={etaDateTo} onChange={e => setEtaDateTo(e.target.value)}
+                      className="bg-[#1b2130] border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <button type="button" onClick={() => fetchEtaList()}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm bg-[#1b2130] border border-gray-600 text-gray-300 hover:text-white hover:border-blue-500 transition-colors">
+                    <span className="material-icons text-base">search</span> بحث
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">إلى تاريخ</label>
-                  <input type="date" value={etaDateTo} onChange={e => setEtaDateTo(e.target.value)}
-                    className="bg-[#1b2130] border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-blue-500" />
-                </div>
-                <button type="button" onClick={() => fetchEtaList()}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm bg-[#1b2130] border border-gray-600 text-gray-300 hover:text-white hover:border-blue-500 transition-colors">
-                  <span className="material-icons text-base">search</span> بحث
-                </button>
+
+                {selectedEtaUuids.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={bulkImportEtaInvoices}
+                    disabled={etaImporting !== ''}
+                    className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm bg-green-700 hover:bg-green-600 text-white transition-colors mr-auto font-medium"
+                  >
+                    <span className="material-icons text-base">cloud_download</span>
+                    {etaImporting.startsWith('bulk-') ? `جاري استيراد (${etaImporting.replace('bulk-', '').replace('-of-', ' من ')})` : `استيراد الفواتير المحددة (${selectedEtaUuids.size})`}
+                  </button>
+                )}
               </div>
               {(() => { const days = Math.round((new Date(etaDateTo).getTime() - new Date(etaDateFrom).getTime()) / 86_400_000); return days > 30 ? (
                 <p className="text-xs text-yellow-400/80 flex items-center gap-1">
@@ -1170,6 +1288,16 @@ const CreateInvoiceScreen: React.FC<{
                 <table className="w-full text-xs text-right">
                   <thead className="bg-[#1b2130] text-gray-400">
                     <tr>
+                      <th className="px-3 py-2 text-center w-10">
+                        <input
+                          type="checkbox"
+                          checked={etaRows.length > 0 && etaRows.every(r => selectedEtaUuids.has(r.uuid))}
+                          onChange={e => {
+                            setSelectedEtaUuids(e.target.checked ? new Set(etaRows.map(r => r.uuid)) : new Set());
+                          }}
+                          className="w-4 h-4 accent-primary cursor-pointer"
+                        />
+                      </th>
                       <th className="px-3 py-2">رقم الفاتورة</th>
                       <th className="px-3 py-2">المورد</th>
                       <th className="px-3 py-2">التاريخ</th>
@@ -1181,6 +1309,21 @@ const CreateInvoiceScreen: React.FC<{
                   <tbody className="divide-y divide-gray-700/50">
                     {etaRows.map(row => (
                       <tr key={row.uuid} className="hover:bg-[#2d3648] transition-colors">
+                        <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedEtaUuids.has(row.uuid)}
+                            onChange={() => {
+                              setSelectedEtaUuids(prev => {
+                                const next = new Set(prev);
+                                if (next.has(row.uuid)) next.delete(row.uuid);
+                                else next.add(row.uuid);
+                                return next;
+                              });
+                            }}
+                            className="w-4 h-4 accent-primary cursor-pointer"
+                          />
+                        </td>
                         <td className="px-3 py-2 text-gray-200 font-mono">{row.internalId}</td>
                         <td className="px-3 py-2 text-gray-300 max-w-[180px] truncate" title={row.issuerName}>{row.issuerName}</td>
                         <td className="px-3 py-2 text-gray-400">{row.dateTimeIssued}</td>
@@ -2231,9 +2374,14 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
         <CreateInvoiceScreen
           initial={editInv}
           projects={projects}
+          invoices={invoices}
           user={user}
           onSave={handleSave}
           onCancel={() => setScreen(activeTab)}
+          onRefresh={async () => {
+            const remote = await loadPayables();
+            setInvoices(remote.length > 0 ? remote : []);
+          }}
         />
       )}
       {screen === 'invoice-details' && selectedInv && (
