@@ -129,8 +129,7 @@ export default function CRMTasks({ user }: { user: User }) {
           ))}
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto hidden md:block">
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="bg-[color-mix(in_oklab,var(--secondary)_50%,transparent)] border-b border-[var(--border)]">
@@ -217,6 +216,87 @@ export default function CRMTasks({ user }: { user: User }) {
               })}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Card List View */}
+        <div className="md:hidden divide-y divide-[var(--border)] bg-[var(--card)]">
+          {filtered.length === 0 ? (
+            <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">
+              No tasks here.{' '}
+              <button onClick={() => setModalOpen(true)} className="text-[var(--primary)] font-medium hover:underline">
+                Create one
+              </button>
+            </div>
+          ) : (
+            filtered.map((task) => {
+              const done = task.status === 'Completed';
+              const prio = task.priority || 'Low';
+              return (
+                <div
+                  key={task.id}
+                  className={`p-4 transition-colors ${
+                    done ? 'opacity-60 bg-[color-mix(in_oklab,var(--secondary)_10%,transparent)]' : 'hover:bg-[color-mix(in_oklab,var(--secondary)_15%,transparent)]'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <button
+                      onClick={() => toggleStatus(task)}
+                      className={`size-5 rounded border flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                        done ? 'bg-[var(--primary)] border-[var(--primary)] text-white' : 'border-[var(--border)] hover:border-[var(--primary)] bg-[var(--card)]'
+                      }`}
+                    >
+                      {done && <Check className="size-3" />}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-semibold leading-snug ${done ? 'line-through text-[var(--muted-foreground)]' : 'text-[var(--foreground)]'}`}>
+                        {task.title}
+                      </p>
+                      <div className="mt-2.5 grid grid-cols-2 gap-2 text-xs text-[var(--muted-foreground)]">
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Contact</span>
+                          <div className="mt-0.5">
+                            {task.contact ? (
+                              <Link to={`/crm/detail/contact/${task.contact_id}`} className="text-[var(--primary)] hover:underline font-medium block truncate">
+                                {task.contact.first_name} {task.contact.last_name}
+                              </Link>
+                            ) : <span className="text-slate-400">—</span>}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Deal</span>
+                          <div className="mt-0.5">
+                            {task.deal ? (
+                              <Link to={`/crm/detail/deal/${task.deal_id}`} className="text-[var(--primary)] hover:underline font-medium block truncate">
+                                {task.deal.name}
+                              </Link>
+                            ) : <span className="text-slate-400">—</span>}
+                          </div>
+                        </div>
+                        <div className="col-span-2 mt-2 flex items-center justify-between">
+                          <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded ${dueDateBadge(task.due_date, done)}`}>
+                            <Calendar className="size-3" />
+                            {task.due_date ? new Date(task.due_date).toLocaleDateString() : 'No due date'}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex items-center rounded-md border px-2.5 py-0.5 text-[10px] font-semibold ${priorityBadge[prio]}`}>
+                              {prio}
+                            </span>
+                            <button
+                              onClick={() => handleDelete(task.id)}
+                              className="p-1 rounded-md text-[var(--muted-foreground)] hover:text-[var(--destructive)] hover:bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] transition-colors"
+                              title="Delete task"
+                            >
+                              <Trash2 className="size-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 

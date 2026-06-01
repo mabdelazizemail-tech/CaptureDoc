@@ -19,8 +19,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         localStorage.setItem('selected_workspace', 'erp');
         onLogin(sessionUser);
       } else if (
-        emailLower === 'menna.youssif@capture-doc.com' ||
-        emailLower === 'hossam.yazal@capture-doc.com'
+        emailLower === 'menna.youssif@capture-doc.com'
       ) {
         localStorage.setItem('selected_workspace', 'crm');
         onLogin(sessionUser);

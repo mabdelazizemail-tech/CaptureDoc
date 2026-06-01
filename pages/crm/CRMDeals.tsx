@@ -19,6 +19,7 @@ export default function CRMDeals({ user }: { user: User }) {
   const [loading, setLoading] = useState(true);
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
   const [filterCreatedBy, setFilterCreatedBy] = useState('All');
+  const [activeMobileStage, setActiveMobileStage] = useState<Deal['stage']>('Lead');
 
   const isAdmin = isCRMAdmin(user);
 
@@ -232,8 +233,114 @@ export default function CRMDeals({ user }: { user: User }) {
         </div>
       </div>
 
-      {/* Kanban Board */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-4 pb-4 items-stretch">
+      {/* Mobile Horizontal Stage Bar */}
+      <div className="lg:hidden flex gap-2 overflow-x-auto pb-2 scrollbar-none border-b border-[var(--border)]">
+        {STAGES.map((stage) => {
+          const stageDeals = deals.filter(d => d.stage === stage && (filterCreatedBy === 'All' || d.created_by === filterCreatedBy));
+          const totalVal = stageDeals.reduce((sum, d) => sum + (d.value || 0), 0);
+          const isActive = activeMobileStage === stage;
+
+          return (
+            <button
+              key={stage}
+              onClick={() => setActiveMobileStage(stage)}
+              className={`flex-1 min-w-[130px] p-2.5 rounded-lg border text-left transition-colors cursor-pointer shrink-0 ${
+                isActive
+                  ? 'bg-[var(--primary)] text-white border-[var(--primary)] shadow-sm'
+                  : 'bg-[var(--card)] text-[var(--foreground)] border-[var(--border)] hover:bg-[var(--secondary)]'
+              }`}
+            >
+              <div className="flex justify-between items-center">
+                <span className="font-semibold text-xs uppercase tracking-wide truncate">{stage}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                  isActive ? 'bg-white/20 text-white' : 'bg-[var(--accent)] text-[var(--accent-foreground)]'
+                }`}>
+                  {stageDeals.length}
+                </span>
+              </div>
+              <div className={`text-[10px] mt-1 font-mono ${
+                isActive ? 'text-white/80' : 'text-[var(--muted-foreground)]'
+              }`}>
+                {totalVal.toLocaleString()} EGP/USD
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Mobile Stage Content View */}
+      <div className="lg:hidden flex-grow space-y-3 overflow-y-auto min-h-[300px]">
+        {(() => {
+          const stageDeals = deals.filter(d => d.stage === activeMobileStage && (filterCreatedBy === 'All' || d.created_by === filterCreatedBy));
+          if (stageDeals.length === 0) {
+            return (
+              <div className="h-40 border-2 border-dashed border-[var(--border)] rounded-lg flex items-center justify-center text-xs text-[var(--muted-foreground)] font-medium uppercase tracking-wider bg-[var(--card)]">
+                No deals in {activeMobileStage}
+              </div>
+            );
+          }
+          return stageDeals.map(deal => (
+            <div
+              key={deal.id}
+              className="bg-[var(--card)] p-4 rounded-lg border border-[var(--border)] shadow-sm hover:border-[var(--primary)] transition-colors relative"
+            >
+              <div className="flex justify-between items-start gap-2">
+                <h4 className="text-sm font-semibold text-[var(--foreground)] leading-snug">{deal.name}</h4>
+                <Link
+                  to={`/crm/detail/deal/${deal.id}`}
+                  className="text-[var(--primary)] hover:underline flex-shrink-0"
+                  title="View Details"
+                >
+                  <ArrowUpRight className="size-4" />
+                </Link>
+              </div>
+              <p className="text-xs text-[var(--muted-foreground)] mt-1">{deal.company?.name || 'No Associated Account'}</p>
+              
+              <div className="mt-2.5 flex flex-wrap gap-1.5 items-center">
+                {deal.line_of_business && (
+                  <span className="inline-block text-[9px] font-bold px-1.5 py-0.5 rounded bg-[color-mix(in_oklab,var(--primary)_12%,transparent)] text-[var(--primary)] uppercase tracking-wide">
+                    {deal.line_of_business}
+                  </span>
+                )}
+                {deal.channel_type && (
+                  <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ${
+                    deal.channel_type === 'Direct'
+                      ? 'bg-[color-mix(in_oklab,var(--success)_12%,transparent)] text-[var(--success)]'
+                      : 'bg-[color-mix(in_oklab,var(--warning,#f59e0b)_12%,transparent)] text-[var(--warning,#f59e0b)]'
+                  }`}>
+                    {deal.channel_type}{deal.channel_type === 'Indirect' && deal.channel_name ? ` · ${deal.channel_name}` : ''}
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-3.5 flex items-center justify-between border-t border-[var(--border)] pt-2.5">
+                <div className="font-bold text-sm font-mono text-[var(--foreground)]">
+                  {deal.currency === 'USD' ? '$' : 'EGP '}{Number(deal.value || 0).toLocaleString()}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => openEditModal(deal)}
+                    className="p-1.5 rounded-md border border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
+                    title="Edit"
+                  >
+                    <Edit className="size-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteDeal(deal.id)}
+                    className="p-1.5 rounded-md border border-[color-mix(in_oklab,var(--destructive)_10%,transparent)] text-[var(--muted-foreground)] hover:bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] hover:text-[var(--destructive)] transition-colors cursor-pointer"
+                    title="Delete"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ));
+        })()}
+      </div>
+
+      {/* Desktop Kanban Board */}
+      <div className="hidden lg:grid flex-1 grid-cols-5 gap-4 pb-4 items-stretch">
         {STAGES.map((stage) => {
           const stageDeals = deals.filter(d => d.stage === stage && (filterCreatedBy === 'All' || d.created_by === filterCreatedBy));
           const totalVal = stageDeals.reduce((sum, d) => sum + (d.value || 0), 0);

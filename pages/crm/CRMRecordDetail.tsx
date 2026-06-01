@@ -241,7 +241,7 @@ export default function CRMRecordDetail({ type: propType, id: propId, onClose }:
   const IconComponent = recordIcon;
 
   return (
-    <div className="p-6 flex flex-col h-full bg-[var(--background)] text-[var(--foreground)] overflow-y-auto">
+    <div className="p-4 md:p-6 flex flex-col h-full bg-[var(--background)] text-[var(--foreground)] overflow-y-auto">
       {/* Breadcrumb / Actions Row */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-4 pr-10">
         {isDrawerMode ? (
@@ -273,7 +273,7 @@ export default function CRMRecordDetail({ type: propType, id: propId, onClose }:
       </div>
 
       {/* Zoho Business Card Header (Glassmorphic) */}
-      <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-sm p-6 mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+      <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-sm p-4 md:p-6 mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-[color-mix(in_oklab,var(--secondary)_50%,transparent)] rounded-full flex items-center justify-center border border-[var(--border)] text-[var(--foreground)] flex-shrink-0 shadow-inner">
             <IconComponent className="w-5 h-5 text-[var(--muted-foreground)]" />
@@ -334,10 +334,10 @@ export default function CRMRecordDetail({ type: propType, id: propId, onClose }:
       {/* Tabs Layout */}
       <div className="flex-1 flex flex-col bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden mb-6">
         {/* Tab triggers */}
-        <div className="h-11 bg-[color-mix(in_oklab,var(--secondary)_20%,transparent)] border-b border-[var(--border)] flex px-6 items-end space-x-6">
+        <div className="h-11 bg-[color-mix(in_oklab,var(--secondary)_20%,transparent)] border-b border-[var(--border)] flex px-4 md:px-6 items-end space-x-6 overflow-x-auto scrollbar-none whitespace-nowrap">
           <button
             onClick={() => setActiveTab('overview')}
-            className={`pb-2.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+            className={`pb-2.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer flex-shrink-0 ${
               activeTab === 'overview' 
                 ? 'border-[var(--primary)] text-[var(--primary)]' 
                 : 'border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]'
@@ -347,7 +347,7 @@ export default function CRMRecordDetail({ type: propType, id: propId, onClose }:
           </button>
           <button
             onClick={() => setActiveTab('details')}
-            className={`pb-2.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+            className={`pb-2.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer flex-shrink-0 ${
               activeTab === 'details' 
                 ? 'border-[var(--primary)] text-[var(--primary)]' 
                 : 'border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]'
@@ -358,7 +358,7 @@ export default function CRMRecordDetail({ type: propType, id: propId, onClose }:
           {['account', 'contact'].includes(type) && (
             <button
               onClick={() => setActiveTab('related')}
-              className={`pb-2.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+              className={`pb-2.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer flex-shrink-0 ${
                 activeTab === 'related' 
                   ? 'border-[var(--primary)] text-[var(--primary)]' 
                   : 'border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]'
@@ -370,13 +370,13 @@ export default function CRMRecordDetail({ type: propType, id: propId, onClose }:
         </div>
 
         {/* Tab content panel */}
-        <div className="flex-1 p-6 overflow-auto">
+        <div className="flex-1 p-4 md:p-6 overflow-auto">
           {activeTab === 'overview' && (
             <div className="space-y-6">
               {/* Field Information Grid */}
               <div>
                 <h3 className="text-xs font-bold text-[var(--muted-foreground)] uppercase tracking-wider mb-4">Basic Information</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5 border border-[var(--border)] rounded-xl p-5 bg-[color-mix(in_oklab,var(--secondary)_8%,transparent)]">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5 border border-[var(--border)] rounded-xl p-4 md:p-5 bg-[color-mix(in_oklab,var(--secondary)_8%,transparent)]">
                   {type === 'lead' && lead && (
                     <>
                       <div>
@@ -533,8 +533,8 @@ export default function CRMRecordDetail({ type: propType, id: propId, onClose }:
                       <User className="w-4 h-4 text-[var(--muted-foreground)] opacity-70" />
                       <span>Associated Contacts</span>
                     </h4>
-                    <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden shadow-inner">
-                      <table className="w-full text-left border-collapse">
+                    <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-x-auto shadow-inner">
+                      <table className="w-full text-left border-collapse min-w-[500px]">
                         <thead>
                           <tr className="bg-[color-mix(in_oklab,var(--secondary)_25%,transparent)] border-b border-[var(--border)] text-[10px] font-bold text-[var(--muted-foreground)] uppercase tracking-wider">
                             <th className="px-6 py-3">Name</th>
@@ -576,8 +576,8 @@ export default function CRMRecordDetail({ type: propType, id: propId, onClose }:
                       <KanbanSquare className="w-4 h-4 text-[var(--muted-foreground)] opacity-70" />
                       <span>Deals Pipeline</span>
                     </h4>
-                    <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden shadow-inner">
-                      <table className="w-full text-left border-collapse">
+                    <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-x-auto shadow-inner">
+                      <table className="w-full text-left border-collapse min-w-[500px]">
                         <thead>
                           <tr className="bg-[color-mix(in_oklab,var(--secondary)_25%,transparent)] border-b border-[var(--border)] text-[10px] font-bold text-[var(--muted-foreground)] uppercase tracking-wider">
                             <th className="px-6 py-3">Deal Name</th>
@@ -625,8 +625,8 @@ export default function CRMRecordDetail({ type: propType, id: propId, onClose }:
                     <KanbanSquare className="w-4 h-4 text-[var(--muted-foreground)] opacity-70" />
                     <span>Pipeline Deals</span>
                   </h4>
-                  <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden shadow-inner">
-                    <table className="w-full text-left border-collapse">
+                  <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-x-auto shadow-inner">
+                    <table className="w-full text-left border-collapse min-w-[500px]">
                       <thead>
                         <tr className="bg-[color-mix(in_oklab,var(--secondary)_25%,transparent)] border-b border-[var(--border)] text-[10px] font-bold text-[var(--muted-foreground)] uppercase tracking-wider">
                           <th className="px-6 py-3">Deal Name</th>

@@ -208,7 +208,7 @@ export default function CRMDashboard({ user }: Props) {
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {kpis.map((k) => {
           const Icon = k.icon;
           return (
@@ -274,68 +274,70 @@ export default function CRMDashboard({ user }: Props) {
                 <div className="text-sm text-[var(--muted-foreground)] animate-pulse">Loading chart…</div>
               </div>
             ) : (
-              <div className="h-72 w-full overflow-hidden">
-                <svg viewBox={`0 0 ${W + LEFT + 20} ${H + 20}`} width="100%" height="100%" preserveAspectRatio="none">
-                  <defs>
-                    <linearGradient id="wonGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="oklch(0.546 0.215 262.9)" stopOpacity="0.35" />
-                      <stop offset="100%" stopColor="oklch(0.546 0.215 262.9)" stopOpacity="0.02" />
-                    </linearGradient>
-                  </defs>
+              <div className="h-72 w-full overflow-x-auto overflow-y-hidden">
+                <div className="h-full min-w-[500px]">
+                  <svg viewBox={`0 0 ${W + LEFT + 20} ${H + 20}`} width="100%" height="100%" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="wonGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="oklch(0.546 0.215 262.9)" stopOpacity="0.35" />
+                        <stop offset="100%" stopColor="oklch(0.546 0.215 262.9)" stopOpacity="0.02" />
+                      </linearGradient>
+                    </defs>
 
-                  {/* Grid lines */}
-                  {yTicks.map((t) => (
-                    <g key={t.pct}>
-                      <line
-                        x1={LEFT} x2={W + LEFT}
-                        y1={yOf(maxVal * t.pct)} y2={yOf(maxVal * t.pct)}
-                        stroke="oklch(0.918 0.008 248)" strokeDasharray="3 3" strokeWidth="1"
+                    {/* Grid lines */}
+                    {yTicks.map((t) => (
+                      <g key={t.pct}>
+                        <line
+                          x1={LEFT} x2={W + LEFT}
+                          y1={yOf(maxVal * t.pct)} y2={yOf(maxVal * t.pct)}
+                          stroke="oklch(0.918 0.008 248)" strokeDasharray="3 3" strokeWidth="1"
+                        />
+                        <text
+                          x={LEFT - 6} y={yOf(maxVal * t.pct)}
+                          fontSize="9" fill="oklch(0.508 0.025 257)"
+                          textAnchor="end" dominantBaseline="middle"
+                        >
+                          {t.label}
+                        </text>
+                      </g>
+                    ))}
+
+                    {/* Pipeline (dashed) */}
+                    {deals.length > 0 && (
+                      <polyline
+                        points={totalPoints}
+                        fill="none"
+                        stroke="oklch(0.508 0.025 257)"
+                        strokeWidth="1.5"
+                        strokeDasharray="4 4"
+                        opacity="0.6"
                       />
-                      <text
-                        x={LEFT - 6} y={yOf(maxVal * t.pct)}
-                        fontSize="9" fill="oklch(0.508 0.025 257)"
-                        textAnchor="end" dominantBaseline="middle"
-                      >
-                        {t.label}
-                      </text>
-                    </g>
-                  ))}
+                    )}
 
-                  {/* Pipeline (dashed) */}
-                  {deals.length > 0 && (
+                    {/* Won area fill */}
+                    <polygon points={areaPoints} fill="url(#wonGrad)" />
+
+                    {/* Won line */}
                     <polyline
-                      points={totalPoints}
+                      points={wonPoints}
                       fill="none"
-                      stroke="oklch(0.508 0.025 257)"
-                      strokeWidth="1.5"
-                      strokeDasharray="4 4"
-                      opacity="0.6"
+                      stroke="oklch(0.546 0.215 262.9)"
+                      strokeWidth="2"
                     />
-                  )}
 
-                  {/* Won area fill */}
-                  <polygon points={areaPoints} fill="url(#wonGrad)" />
-
-                  {/* Won line */}
-                  <polyline
-                    points={wonPoints}
-                    fill="none"
-                    stroke="oklch(0.546 0.215 262.9)"
-                    strokeWidth="2"
-                  />
-
-                  {/* X-axis labels */}
-                  {weekLabels.map((w, i) => (
-                    <text
-                      key={w}
-                      x={xOf(i)} y={H + 16}
-                      fontSize="9" fill="oklch(0.508 0.025 257)"
-                      textAnchor="middle"
-                    >
-                      {i % 2 === 0 ? w : ''}
-                    </text>
-                  ))}
-                </svg>
+                    {/* X-axis labels */}
+                    {weekLabels.map((w, i) => (
+                      <text
+                        key={w}
+                        x={xOf(i)} y={H + 16}
+                        fontSize="9" fill="oklch(0.508 0.025 257)"
+                        textAnchor="middle"
+                      >
+                        {i % 2 === 0 ? w : ''}
+                      </text>
+                    ))}
+                  </svg>
+                </div>
               </div>
             )}
 

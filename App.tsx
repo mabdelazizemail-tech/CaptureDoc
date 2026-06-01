@@ -25,7 +25,7 @@ const isFinanceOnly = (u: User | null) =>
     FINANCE_ONLY_USERS.includes((u.email || '').toLowerCase())
   );
 
-const CRM_ONLY_USERS = ['menna.youssif@capture-doc.com', 'hossam.yazal@capture-doc.com'];
+const CRM_ONLY_USERS = ['menna.youssif@capture-doc.com'];
 const isCRMOnly = (u: User | null) =>
   !!u && (
     CRM_ONLY_USERS.includes((u.username || '').toLowerCase()) ||

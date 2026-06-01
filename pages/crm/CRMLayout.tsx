@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
 import {
   LayoutGrid, Users, Contact2, Building2, Handshake,
   CalendarCheck, ChevronLeft, Sparkles,
-  Bell, Plus, Search, ChevronDown, LogOut, ArrowLeft, X,
+  Bell, Plus, Search, ChevronDown, LogOut, ArrowLeft, X, Menu,
 } from 'lucide-react';
 import './crm.css';
 import { User } from '../../services/types';
@@ -23,20 +23,43 @@ const nav = [
 ];
 
 /* ─── Sidebar ─────────────────────────────────────────────────── */
-function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+function Sidebar({
+  collapsed,
+  onToggle,
+  mobileOpen,
+  onCloseMobile,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+  mobileOpen: boolean;
+  onCloseMobile: () => void;
+}) {
   return (
     <aside
-      className={`sticky top-0 h-screen shrink-0 bg-[var(--sidebar)] text-[var(--sidebar-foreground)] border-r border-[var(--sidebar-border)] flex flex-col transition-[width] duration-200 ${collapsed ? 'w-16' : 'w-60'}`}
+      className={`fixed inset-y-0 left-0 z-40 bg-[var(--sidebar)] text-[var(--sidebar-foreground)] border-r border-[var(--sidebar-border)] flex flex-col transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:shrink-0 lg:translate-x-0 ${
+        mobileOpen ? 'translate-x-0 w-60' : '-translate-x-full lg:translate-x-0'
+      } ${collapsed ? 'lg:w-16' : 'lg:w-60'}`}
     >
       {/* Logo */}
-      <div className="h-14 flex items-center gap-2 px-4 border-b border-[var(--sidebar-border)]">
-        <div className="size-8 rounded-md bg-[var(--primary)] flex items-center justify-center shrink-0">
-          <Sparkles className="size-4 text-white" aria-hidden="true" />
-        </div>
-        {!collapsed && (
-          <div className="font-semibold tracking-tight text-white text-[15px]">
-            CaptureCRM
+      <div className="h-14 flex items-center justify-between gap-2 px-4 border-b border-[var(--sidebar-border)]">
+        <div className="flex items-center gap-2">
+          <div className="size-8 rounded-md bg-[var(--primary)] flex items-center justify-center shrink-0">
+            <Sparkles className="size-4 text-white" aria-hidden="true" />
           </div>
+          {(!collapsed || mobileOpen) && (
+            <div className="font-semibold tracking-tight text-white text-[15px]">
+              CaptureCRM
+            </div>
+          )}
+        </div>
+        {mobileOpen && (
+          <button
+            onClick={onCloseMobile}
+            className="lg:hidden text-[color-mix(in_oklab,var(--sidebar-foreground)_80%,transparent)] hover:text-white p-1 hover:bg-white/5 rounded-md cursor-pointer"
+            aria-label="Close sidebar"
+          >
+            <X className="size-5" />
+          </button>
         )}
       </div>
 
@@ -50,6 +73,7 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
               to={item.to}
               end={item.end}
               title={collapsed ? item.label : undefined}
+              onClick={onCloseMobile}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 h-9 rounded-md text-sm font-medium transition-colors ${
                   isActive
@@ -59,7 +83,7 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
               }
             >
               <Icon className="size-[18px] shrink-0" aria-hidden="true" />
-              {!collapsed && <span>{item.label}</span>}
+              {(!collapsed || mobileOpen) && <span>{item.label}</span>}
             </NavLink>
           );
         })}
@@ -68,7 +92,7 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
       {/* Collapse toggle */}
       <button
         onClick={onToggle}
-        className="h-10 border-t border-[var(--sidebar-border)] text-xs text-[color-mix(in_oklab,var(--sidebar-foreground)_70%,transparent)] hover:text-white hover:bg-white/5 flex items-center justify-center gap-2"
+        className="h-10 border-t border-[var(--sidebar-border)] text-xs text-[color-mix(in_oklab,var(--sidebar-foreground)_70%,transparent)] hover:text-white hover:bg-white/5 flex items-center justify-center gap-2 hidden lg:flex"
       >
         <ChevronLeft className={`size-4 transition-transform ${collapsed ? 'rotate-180' : ''}`} />
         {!collapsed && <span>Collapse</span>}
@@ -78,7 +102,15 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
 }
 
 /* ─── Header ──────────────────────────────────────────────────── */
-function Header({ user, onLogout }: { user: User; onLogout: () => void }) {
+function Header({
+  user,
+  onLogout,
+  onMenuToggle,
+}: {
+  user: User;
+  onLogout: () => void;
+  onMenuToggle: () => void;
+}) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -117,7 +149,17 @@ function Header({ user, onLogout }: { user: User; onLogout: () => void }) {
 
   return (
     <>
-      <header className="sticky top-0 z-30 h-14 bg-white border-b border-[var(--border)] flex items-center gap-4 px-6">
+      <header className="sticky top-0 z-30 h-14 bg-white border-b border-[var(--border)] flex items-center gap-3 md:gap-4 px-4 md:px-6">
+        {/* Hamburger menu for mobile */}
+        <button
+          type="button"
+          onClick={onMenuToggle}
+          className="lg:hidden p-1.5 -ml-1 rounded-md text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--accent)] transition-colors cursor-pointer shrink-0"
+          aria-label="Open sidebar"
+        >
+          <Menu className="size-[20px]" />
+        </button>
+
         {/* Search trigger */}
         <button
           type="button"
@@ -125,23 +167,24 @@ function Header({ user, onLogout }: { user: User; onLogout: () => void }) {
           className="flex-1 max-w-2xl mx-auto relative text-left group"
         >
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-[var(--muted-foreground)]" aria-hidden="true" />
-          <span className="block w-full h-9 pl-9 pr-20 rounded-md border border-[var(--border)] bg-[color-mix(in_oklab,var(--secondary)_40%,transparent)] text-sm text-[var(--muted-foreground)] leading-9 group-hover:bg-white group-hover:border-[color-mix(in_oklab,var(--ring)_40%,transparent)] transition-colors">
-            Search leads, contacts, deals…
+          <span className="block w-full h-9 pl-9 pr-4 sm:pr-20 rounded-md border border-[var(--border)] bg-[color-mix(in_oklab,var(--secondary)_40%,transparent)] text-sm text-[var(--muted-foreground)] leading-9 group-hover:bg-white group-hover:border-[color-mix(in_oklab,var(--ring)_40%,transparent)] transition-colors truncate">
+            <span className="hidden sm:inline">Search leads, contacts, deals…</span>
+            <span className="inline sm:hidden">Search…</span>
           </span>
-          <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-[var(--muted-foreground)] border border-[var(--border)] rounded px-1.5 py-0.5 bg-white">
+          <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-[var(--muted-foreground)] border border-[var(--border)] rounded px-1.5 py-0.5 bg-white hidden md:block">
             Ctrl + K
           </kbd>
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
           {/* Quick Add */}
           <button
             onClick={() => setQuickAddOpen(true)}
-            className="inline-flex items-center justify-center cursor-pointer transition-colors bg-[var(--primary)] text-white hover:bg-[color-mix(in_oklab,var(--primary)_90%,transparent)] rounded-md px-3 text-xs h-9 gap-1.5 font-medium"
+            className="inline-flex items-center justify-center cursor-pointer transition-colors bg-[var(--primary)] text-white hover:bg-[color-mix(in_oklab,var(--primary)_90%,transparent)] rounded-md px-2.5 md:px-3 text-xs h-9 gap-1 md:gap-1.5 font-medium"
           >
-            <Plus className="size-4" aria-hidden="true" />
-            Quick Add
-            <ChevronDown className="size-3.5 opacity-80" aria-hidden="true" />
+            <Plus className="size-4 shrink-0" aria-hidden="true" />
+            <span className="hidden sm:inline">Quick Add</span>
+            <ChevronDown className="size-3.5 opacity-80 shrink-0" aria-hidden="true" />
           </button>
 
           {/* Notifications */}
@@ -279,6 +322,7 @@ function Header({ user, onLogout }: { user: User; onLogout: () => void }) {
 
 export default function CRMLayout({ user, onLogout }: CRMLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -313,10 +357,27 @@ export default function CRMLayout({ user, onLogout }: CRMLayoutProps) {
 
   return (
     <div dir="ltr" className="min-h-screen w-full flex bg-[var(--background)] crm-scope">
-      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
+      {/* Mobile backdrop overlay */}
+      {mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 backdrop-blur-xs lg:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
+      <Sidebar
+        collapsed={collapsed}
+        onToggle={() => setCollapsed((c) => !c)}
+        mobileOpen={mobileSidebarOpen}
+        onCloseMobile={() => setMobileSidebarOpen(false)}
+      />
       <div className="flex-1 flex flex-col min-w-0">
-        <Header user={user} onLogout={onLogout} />
-        <main className="flex-1 px-6 py-6">
+        <Header
+          user={user}
+          onLogout={onLogout}
+          onMenuToggle={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+        />
+        <main className="flex-1 px-4 py-4 md:px-6 md:py-6">
           <Outlet />
         </main>
       </div>

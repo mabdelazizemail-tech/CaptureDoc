@@ -63,7 +63,7 @@ export const StorageService = {
             };
         }
 
-        if (cleanUser === 'hossam.yazal@capture-doc.com' && cleanPass === 'Capture@26') {
+        if (cleanUser === 'hossam.yazal@capture-doc.com' && cleanPass === 'Pass@123') {
             return {
                 id: '394a3720-f2c3-4bd7-afa0-261d16dbe78c',
                 username: 'hossam.yazal@capture-doc.com',

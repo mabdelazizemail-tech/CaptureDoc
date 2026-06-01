@@ -223,7 +223,7 @@ export default function CRMContacts({ user }: { user: User }) {
   });
 
   return (
-    <div className="flex h-full space-x-5 max-w-[1600px] mx-auto select-none">
+    <div className="flex flex-col lg:flex-row h-full space-y-4 lg:space-y-0 lg:space-x-5 max-w-[1600px] mx-auto select-none">
       {/* List Content */}
       <div className="flex-1 flex flex-col space-y-5 overflow-hidden">
         {/* Header Action Bar */}
@@ -273,7 +273,7 @@ export default function CRMContacts({ user }: { user: User }) {
             </div>
           </div>
 
-          <div className="overflow-auto flex-1">
+          <div className="overflow-auto flex-1 hidden md:block">
             <table className="w-full text-left border-collapse min-w-[800px] text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] font-semibold text-xs text-[var(--muted-foreground)] uppercase tracking-wider">
@@ -378,6 +378,125 @@ export default function CRMContacts({ user }: { user: User }) {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile Card List View */}
+          <div className="md:hidden divide-y divide-[var(--border)] bg-[var(--card)]">
+            {filteredContacts.length === 0 ? (
+              <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">
+                No contacts match the filters.
+              </div>
+            ) : (
+              filteredContacts.map((contact) => {
+                const isSelected = selected.has(contact.id);
+                const fullName = `${contact.first_name} ${contact.last_name}`;
+                return (
+                  <div
+                    key={contact.id}
+                    className={`p-4 transition-colors ${
+                      isSelected ? 'bg-[color-mix(in_oklab,var(--accent)_30%,transparent)]' : 'hover:bg-[color-mix(in_oklab,var(--secondary)_15%,transparent)]'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggle(contact.id)}
+                          aria-label={`Select ${fullName}`}
+                          className="rounded cursor-pointer size-4 shrink-0 mt-1"
+                          style={{ accentColor: 'var(--primary)' }}
+                        />
+                        <div className="min-w-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setActiveDetailId(contact.id);
+                              setDrawerOpen(true);
+                            }}
+                            className="text-sm font-semibold text-[var(--foreground)] hover:text-[var(--primary)] hover:underline text-left cursor-pointer font-sans block truncate"
+                          >
+                            {fullName}
+                          </button>
+                          {contact.title && (
+                            <p className="text-xs text-[var(--muted-foreground)] mt-0.5 truncate">
+                              {contact.title}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2.5 text-xs text-[var(--muted-foreground)] pl-7">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Account</span>
+                        <p className="font-semibold text-[var(--foreground)] mt-0.5 truncate">{contact.company?.name || '—'}</p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Created By</span>
+                        <p className="font-semibold text-[var(--foreground)] mt-0.5 truncate">{contact.created_by || '—'}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Email</span>
+                        <p className="font-semibold text-[var(--foreground)] mt-0.5 truncate">
+                          {contact.email ? (
+                            <a href={`mailto:${contact.email}`} className="text-[var(--primary)] hover:underline">
+                              {contact.email}
+                            </a>
+                          ) : '—'}
+                        </p>
+                      </div>
+                      {contact.phone && (
+                        <div className="col-span-2">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Phone</span>
+                          <p className="font-semibold text-[var(--foreground)] mt-0.5 truncate tabular-nums">
+                            <a href={`tel:${contact.phone}`} className="hover:text-[var(--primary)] hover:underline">
+                              {contact.phone}
+                            </a>
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between border-t border-[var(--border)] pt-2.5 pl-7">
+                      <span className="text-[10px] text-[var(--muted-foreground)]">
+                        Details available in quick view
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setActiveDetailId(contact.id);
+                            setDrawerOpen(true);
+                          }}
+                          className="inline-flex items-center gap-0.5 text-xs font-semibold text-[var(--primary)] hover:underline cursor-pointer font-sans"
+                        >
+                          Details
+                          <ArrowUpRight className="size-3.5" />
+                        </button>
+                        <button
+                          onClick={() => openEditModal(contact)}
+                          className="p-1 rounded-md border border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)] transition-colors"
+                          title="Edit"
+                        >
+                          <Edit className="size-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(contact.id)}
+                          className="p-1 rounded-md border border-[color-mix(in_oklab,var(--destructive)_10%,transparent)] text-[var(--muted-foreground)] hover:bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] hover:text-[var(--destructive)] transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
           <div className="px-6 py-3 border-t border-[var(--border)] bg-[color-mix(in_oklab,var(--secondary)_20%,transparent)] flex justify-between items-center text-xs text-[var(--muted-foreground)]">
             <span>Showing {filteredContacts.length} contacts</span>
           </div>
@@ -386,7 +505,7 @@ export default function CRMContacts({ user }: { user: User }) {
 
       {/* Right collapsible filter panel */}
       {showFilters && (
-        <div className="w-64 bg-[var(--card)] border border-[var(--border)] rounded-lg p-6 flex flex-col overflow-y-auto shadow-sm self-start">
+        <div className="w-full lg:w-64 bg-[var(--card)] border border-[var(--border)] rounded-lg p-4 md:p-6 flex flex-col overflow-y-auto shadow-sm self-start shrink-0">
           <div className="flex justify-between items-center pb-4 border-b border-[var(--border)] mb-4">
             <h3 className="text-sm font-semibold text-[var(--foreground)] uppercase tracking-wide flex items-center gap-2">
               <SlidersHorizontal className="w-4 h-4 text-[var(--muted-foreground)]" />
@@ -586,7 +705,7 @@ export default function CRMContacts({ user }: { user: User }) {
       {/* Right-Side Sliding Drawer */}
       <div className={`fixed inset-0 z-50 flex justify-end transition-opacity duration-300 ${drawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
         <div className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity duration-300" onClick={() => { setDrawerOpen(false); setTimeout(() => setActiveDetailId(null), 300); }} />
-        <div className={`relative w-full max-w-2xl h-full bg-[var(--card)] shadow-2xl border-l border-[var(--border)] flex flex-col transition-transform duration-300 ease-out transform ${drawerOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className={`relative w-full lg:max-w-2xl h-full bg-[var(--card)] shadow-2xl border-l border-[var(--border)] flex flex-col transition-transform duration-300 ease-out transform ${drawerOpen ? 'translate-x-0' : 'translate-x-full'}`}>
           <button 
             onClick={() => { setDrawerOpen(false); setTimeout(() => setActiveDetailId(null), 300); }} 
             className="absolute top-4 right-4 text-[var(--muted-foreground)] hover:text-[var(--foreground)] z-10 p-1.5 hover:bg-[var(--accent)] rounded-[2px] transition-colors cursor-pointer"

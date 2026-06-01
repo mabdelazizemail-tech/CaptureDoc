@@ -83,12 +83,16 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isOpen, toggleSidebar
           ...operationalItems,
         ];
       case 'supervisor':
-        return [
+        const supervisorItems = [
           { id: 'dashboard', label: 'فريقي', icon: 'people' },
           { id: 'kpi', label: 'التقييم', icon: 'assignment' },
           { id: 'assets', label: 'الأصول', icon: 'precision_manufacturing' },
           { id: 'tickets', label: 'الدعم الفني', icon: 'confirmation_number' },
         ];
+        if (userEmail === 'hossam.yazal@capture-doc.com') {
+          supervisorItems.push({ id: 'collections', label: 'التحصيلات', icon: 'payments' });
+        }
+        return supervisorItems;
       case 'it_specialist':
         return [
           { id: 'assets', label: 'إدارة الأصول', icon: 'inventory' },

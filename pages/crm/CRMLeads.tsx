@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   Plus, Search, Filter, Columns3, Download,
-  X, ChevronDown, AlertCircle, Edit, Trash2, Check,
+  X, ChevronDown, AlertCircle, Edit, Trash2, Check, ArrowUpRight,
 } from 'lucide-react';
 import { getLeads, createLead, deleteLead, updateLead, Lead, isCRMAdmin } from '../../services/crmService';
 import SmartLookup, { SmartLookupResult } from '../../components/SmartLookup';
@@ -257,8 +257,8 @@ export default function CRMLeads({ user }: { user: User }) {
       {/* Table card */}
       <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-sm overflow-hidden">
         {/* Toolbar */}
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[var(--border)] bg-[var(--card)]">
-          <div className="relative flex-1 max-w-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3 border-b border-[var(--border)] bg-[var(--card)]">
+          <div className="relative w-full sm:max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-[var(--muted-foreground)]" />
             <input
               value={query}
@@ -267,12 +267,12 @@ export default function CRMLeads({ user }: { user: User }) {
               className="w-full h-9 pl-9 pr-3 rounded-md border border-[var(--border)] bg-[var(--background)] text-sm placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 w-full sm:w-auto shrink-0 scrollbar-none">
             {(['All', 'New', 'Contacted', 'Qualified', 'Lost'] as const).map((st) => (
               <button
                 key={st}
                 onClick={() => setFilterStatus(st)}
-                className={`px-2.5 py-1 text-xs font-medium rounded transition-colors ${
+                className={`px-2.5 py-1 text-xs font-medium rounded transition-colors shrink-0 ${
                   filterStatus === st
                     ? 'bg-[var(--primary)] text-white'
                     : 'text-[var(--muted-foreground)] hover:bg-[var(--secondary)]'
@@ -283,11 +283,11 @@ export default function CRMLeads({ user }: { user: User }) {
             ))}
             {isAdmin && (
               <>
-                <div className="w-px h-5 bg-[var(--border)] mx-1" />
+                <div className="w-px h-5 bg-[var(--border)] mx-1 shrink-0" />
                 <select
                   value={filterCreatedBy}
                   onChange={(e) => setFilterCreatedBy(e.target.value)}
-                  className="h-8 px-2 border border-[var(--border)] rounded-md bg-[var(--card)] text-xs text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
+                  className="h-8 px-2 border border-[var(--border)] rounded-md bg-[var(--card)] text-xs text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)] font-medium shrink-0"
                 >
                   <option value="All">All Users</option>
                   {creators.map(c => (
@@ -300,7 +300,7 @@ export default function CRMLeads({ user }: { user: User }) {
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto hidden md:block">
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b border-[var(--border)]">
@@ -425,6 +425,139 @@ export default function CRMLeads({ user }: { user: User }) {
               })}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Card List View */}
+        <div className="md:hidden divide-y divide-[var(--border)] bg-[var(--card)]">
+          {filtered.length === 0 ? (
+            <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">
+              No leads found.{' '}
+              <button
+                onClick={openCreateModal}
+                className="font-medium text-[var(--primary)] hover:underline"
+              >
+                Create one
+              </button>
+            </div>
+          ) : (
+            filtered.map((lead) => {
+              const fullName = `${lead.first_name} ${lead.last_name}`;
+              const initials = fullName.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase();
+              const isSelected = selected.has(lead.id);
+
+              return (
+                <div
+                  key={lead.id}
+                  className={`p-4 transition-colors ${
+                    isSelected ? 'bg-[color-mix(in_oklab,var(--accent)_30%,transparent)]' : 'hover:bg-[color-mix(in_oklab,var(--secondary)_15%,transparent)]'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggle(lead.id)}
+                        aria-label={`Select ${fullName}`}
+                        className="rounded cursor-pointer size-4 shrink-0 mt-1"
+                        style={{ accentColor: 'var(--primary)' }}
+                      />
+                      <div className="size-8 rounded-full bg-[color-mix(in_oklab,var(--primary)_10%,transparent)] text-[var(--primary)] text-xs font-semibold flex items-center justify-center shrink-0 mt-0.5">
+                        {initials}
+                      </div>
+                      <div className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setActiveDetailId(lead.id);
+                            setDrawerOpen(true);
+                          }}
+                          className="text-sm font-semibold text-[var(--foreground)] hover:text-[var(--primary)] hover:underline text-left cursor-pointer font-sans block truncate"
+                        >
+                          {fullName}
+                        </button>
+                        {lead.title && (
+                          <p className="text-xs text-[var(--muted-foreground)] mt-0.5 truncate">
+                            {lead.title}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold shrink-0 ${statusStyles[lead.status] || statusStyles['Lost']}`}>
+                      {lead.status}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2.5 text-xs text-[var(--muted-foreground)] pl-7">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Company</span>
+                      <p className="font-semibold text-[var(--foreground)] mt-0.5 truncate">{lead.company || '—'}</p>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Source</span>
+                      <p className="font-semibold text-[var(--foreground)] mt-0.5 truncate">{lead.source || '—'}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Email</span>
+                      <p className="font-semibold text-[var(--foreground)] mt-0.5 truncate">
+                        {lead.email ? (
+                          <a href={`mailto:${lead.email}`} className="text-[var(--primary)] hover:underline">
+                            {lead.email}
+                          </a>
+                        ) : '—'}
+                      </p>
+                    </div>
+                    {lead.phone && (
+                      <div className="col-span-2">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Phone</span>
+                        <p className="font-semibold text-[var(--foreground)] mt-0.5 truncate tabular-nums">
+                          <a href={`tel:${lead.phone}`} className="hover:text-[var(--primary)] hover:underline">
+                            {lead.phone}
+                          </a>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between border-t border-[var(--border)] pt-2.5 pl-7">
+                    <div className="text-[10px] text-[var(--muted-foreground)] flex items-center gap-1">
+                      <span className="opacity-60">Created by</span>
+                      <span className="font-medium">{lead.created_by || '—'}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setActiveDetailId(lead.id);
+                          setDrawerOpen(true);
+                        }}
+                        className="inline-flex items-center gap-0.5 text-xs font-semibold text-[var(--primary)] hover:underline cursor-pointer font-sans"
+                      >
+                        Details
+                        <ArrowUpRight className="size-3.5" />
+                      </button>
+                      <button
+                        onClick={() => openEditModal(lead)}
+                        className="p-1 rounded-md border border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)] transition-colors"
+                        title="Edit Lead"
+                      >
+                        <Edit className="size-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(lead.id)}
+                        className="p-1 rounded-md border border-[color-mix(in_oklab,var(--destructive)_10%,transparent)] text-[var(--muted-foreground)] hover:bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] hover:text-[var(--destructive)] transition-colors"
+                        title="Delete Lead"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
 
         {/* Footer */}
@@ -583,7 +716,7 @@ export default function CRMLeads({ user }: { user: User }) {
       {/* Right-Side Sliding Drawer */}
       <div className={`fixed inset-0 z-50 flex justify-end transition-opacity duration-300 ${drawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
         <div className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity duration-300" onClick={() => { setDrawerOpen(false); setTimeout(() => setActiveDetailId(null), 300); }} />
-        <div className={`relative w-full max-w-2xl h-full bg-[var(--card)] shadow-2xl border-l border-[var(--border)] flex flex-col transition-transform duration-300 ease-out transform ${drawerOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className={`relative w-full lg:max-w-2xl h-full bg-[var(--card)] shadow-2xl border-l border-[var(--border)] flex flex-col transition-transform duration-300 ease-out transform ${drawerOpen ? 'translate-x-0' : 'translate-x-full'}`}>
           <button 
             onClick={() => { setDrawerOpen(false); setTimeout(() => setActiveDetailId(null), 300); }} 
             className="absolute top-4 right-4 text-[var(--muted-foreground)] hover:text-[var(--foreground)] z-10 p-1.5 hover:bg-[var(--accent)] rounded-[2px] transition-colors cursor-pointer"
