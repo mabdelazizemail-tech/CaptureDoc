@@ -792,6 +792,53 @@ const CreateInvoiceScreen: React.FC<{
   const [etaPdfLoading, setEtaPdfLoading] = useState('');
   const [etaPdfPreview, setEtaPdfPreview] = useState<{ uuid: string; name: string; url: string } | null>(null);
 
+  // Local Search & Sort state
+  const [etaSearchQuery, setEtaSearchQuery] = useState('');
+  const [etaSortField, setEtaSortField] = useState<'internalId' | 'issuerName' | 'dateTimeIssued' | 'total' | null>(null);
+  const [etaSortOrder, setEtaSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  const handleSort = (field: 'internalId' | 'issuerName' | 'dateTimeIssued' | 'total') => {
+    if (etaSortField === field) {
+      setEtaSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setEtaSortField(field);
+      setEtaSortOrder('asc');
+    }
+  };
+
+  const filteredAndSortedEtaRows = useMemo(() => {
+    let result = [...etaRows];
+
+    if (etaSearchQuery.trim()) {
+      const q = etaSearchQuery.toLowerCase().trim();
+      result = result.filter(row =>
+        (row.internalId || '').toLowerCase().includes(q) ||
+        (row.issuerName || '').toLowerCase().includes(q) ||
+        (row.dateTimeIssued || '').toLowerCase().includes(q) ||
+        String(row.total).includes(q)
+      );
+    }
+
+    if (etaSortField) {
+      result.sort((a, b) => {
+        const valA = a[etaSortField];
+        const valB = b[etaSortField];
+
+        if (typeof valA === 'string' && typeof valB === 'string') {
+          return etaSortOrder === 'asc'
+            ? valA.localeCompare(valB, 'ar-EG')
+            : valB.localeCompare(valA, 'ar-EG');
+        } else {
+          const numA = Number(valA) || 0;
+          const numB = Number(valB) || 0;
+          return etaSortOrder === 'asc' ? numA - numB : numB - numA;
+        }
+      });
+    }
+
+    return result;
+  }, [etaRows, etaSearchQuery, etaSortField, etaSortOrder]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -1355,103 +1402,164 @@ const CreateInvoiceScreen: React.FC<{
 
             {/* Table */}
             {!etaLoading && etaRows.length > 0 && (
-              <div className="overflow-x-auto rounded-lg border border-gray-700">
-                <table className="w-full text-xs text-right">
-                  <thead className="bg-[#1b2130] text-gray-400">
-                    <tr>
-                      <th className="px-3 py-2 text-center w-10">
-                        <input
-                          type="checkbox"
-                          checked={etaRows.length > 0 && etaRows.every(r => selectedEtaUuids.has(r.uuid))}
-                          onChange={e => {
-                            setSelectedEtaUuids(e.target.checked ? new Set(etaRows.map(r => r.uuid)) : new Set());
-                          }}
-                          className="w-4 h-4 accent-primary cursor-pointer"
-                        />
-                      </th>
-                      <th className="px-3 py-2">رقم الفاتورة</th>
-                      <th className="px-3 py-2">المورد</th>
-                      <th className="px-3 py-2">التاريخ</th>
-                      <th className="px-3 py-2 text-left">الإجمالي</th>
-                      <th className="px-3 py-2 text-center">PDF</th>
-                      <th className="px-3 py-2"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-700/50">
-                    {etaRows.map(row => {
-                      const alreadyImported = row.internalId
-                        ? invoices.some(inv => inv.invoiceNo === row.internalId)
-                        : false;
-                      return (
-                        <tr key={row.uuid} className="hover:bg-[#2d3648] transition-colors">
-                          <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+              <div className="space-y-3">
+                {/* Search Bar */}
+                <div className="flex justify-between items-center gap-4 flex-wrap">
+                  <div className="relative w-full max-w-xs">
+                    <span className="material-icons absolute right-3 top-2.5 text-gray-500 text-sm">search</span>
+                    <input
+                      type="text"
+                      placeholder="البحث برقم الفاتورة أو المورد..."
+                      value={etaSearchQuery}
+                      onChange={e => setEtaSearchQuery(e.target.value)}
+                      className="w-full bg-[#1b2130] border border-gray-700 rounded-lg pr-9 pl-8 py-1.5 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                    />
+                    {etaSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setEtaSearchQuery('')}
+                        className="absolute left-2.5 top-2 text-gray-500 hover:text-gray-300"
+                      >
+                        <span className="material-icons text-sm">close</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {filteredAndSortedEtaRows.length > 0 ? (
+                  <div className="overflow-x-auto rounded-lg border border-gray-700">
+                    <table className="w-full text-xs text-right">
+                      <thead className="bg-[#1b2130] text-gray-400">
+                        <tr>
+                          <th className="px-3 py-2 text-center w-10">
                             <input
                               type="checkbox"
-                              checked={selectedEtaUuids.has(row.uuid)}
-                              onChange={() => {
-                                setSelectedEtaUuids(prev => {
-                                  const next = new Set(prev);
-                                  if (next.has(row.uuid)) next.delete(row.uuid);
-                                  else next.add(row.uuid);
-                                  return next;
-                                });
+                              checked={filteredAndSortedEtaRows.length > 0 && filteredAndSortedEtaRows.every(r => selectedEtaUuids.has(r.uuid))}
+                              onChange={e => {
+                                setSelectedEtaUuids(e.target.checked ? new Set(filteredAndSortedEtaRows.map(r => r.uuid)) : new Set());
                               }}
                               className="w-4 h-4 accent-primary cursor-pointer"
                             />
-                          </td>
-                          <td className="px-3 py-2 text-gray-200 font-mono">{row.internalId}</td>
-                          <td className="px-3 py-2 text-gray-300 max-w-[180px] truncate" title={row.issuerName}>{row.issuerName}</td>
-                          <td className="px-3 py-2 text-gray-400">{row.dateTimeIssued}</td>
-                          <td className="px-3 py-2 text-left text-green-400 font-medium">{fmt(row.total)} EGP</td>
-                          <td className="px-3 py-2 text-center">
-                            <button
-                              type="button"
-                              title="معاينة PDF"
-                              onClick={() => previewEtaPdf(row)}
-                              disabled={etaPdfLoading === row.uuid}
-                              className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-orange-700/30 text-orange-400 hover:text-orange-300 transition-colors disabled:opacity-40"
-                            >
-                              <span className={`material-icons text-base ${etaPdfLoading === row.uuid ? 'animate-spin text-gray-400' : ''}`}>
-                                {etaPdfLoading === row.uuid ? 'refresh' : 'picture_as_pdf'}
+                          </th>
+                          <th className="px-3 py-2 cursor-pointer select-none hover:text-white transition-colors" onClick={() => handleSort('internalId')}>
+                            <div className="flex items-center gap-1 justify-start">
+                              <span>رقم الفاتورة</span>
+                              <span className="material-icons text-[13px] text-gray-500">
+                                {etaSortField === 'internalId' ? (etaSortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward') : 'unfold_more'}
                               </span>
-                            </button>
-                          </td>
-                          <td className="px-3 py-2">
-                            {alreadyImported ? (
-                              <button
-                                type="button"
-                                onClick={() => importEtaInvoice(row)}
-                                disabled={etaImporting === row.uuid}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-950/40 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors disabled:opacity-50 whitespace-nowrap"
-                              >
-                                <span className={`material-icons text-xs ${etaImporting === row.uuid ? 'animate-spin' : ''}`}>
-                                  {etaImporting === row.uuid ? 'refresh' : 'check_circle'}
-                                </span>
-                                تم الاستيراد مسبقاً
-                              </button>
-                            ) : (
-                              <button type="button" onClick={() => importEtaInvoice(row)}
-                                disabled={etaImporting === row.uuid}
-                                className="flex items-center gap-1 px-2 py-1 rounded bg-blue-700/70 hover:bg-blue-600 text-white transition-colors whitespace-nowrap disabled:opacity-50">
-                                <span className={`material-icons text-xs ${etaImporting === row.uuid ? 'animate-spin' : ''}`}>
-                                  {etaImporting === row.uuid ? 'refresh' : 'download'}
-                                </span>
-                                {etaImporting === row.uuid ? '...' : 'استيراد'}
-                              </button>
-                            )}
-                          </td>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 cursor-pointer select-none hover:text-white transition-colors" onClick={() => handleSort('issuerName')}>
+                            <div className="flex items-center gap-1 justify-start">
+                              <span>المورد</span>
+                              <span className="material-icons text-[13px] text-gray-500">
+                                {etaSortField === 'issuerName' ? (etaSortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward') : 'unfold_more'}
+                              </span>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 cursor-pointer select-none hover:text-white transition-colors" onClick={() => handleSort('dateTimeIssued')}>
+                            <div className="flex items-center gap-1 justify-start">
+                              <span>التاريخ</span>
+                              <span className="material-icons text-[13px] text-gray-500">
+                                {etaSortField === 'dateTimeIssued' ? (etaSortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward') : 'unfold_more'}
+                              </span>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-left cursor-pointer select-none hover:text-white transition-colors" onClick={() => handleSort('total')}>
+                            <div className="flex items-center gap-1 justify-end">
+                              <span className="material-icons text-[13px] text-gray-500">
+                                {etaSortField === 'total' ? (etaSortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward') : 'unfold_more'}
+                              </span>
+                              <span>الإجمالي</span>
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 text-center">PDF</th>
+                          <th className="px-3 py-2"></th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody className="divide-y divide-gray-700/50">
+                        {filteredAndSortedEtaRows.map(row => {
+                          const alreadyImported = row.internalId
+                            ? invoices.some(inv => inv.invoiceNo === row.internalId)
+                            : false;
+                          return (
+                            <tr key={row.uuid} className="hover:bg-[#2d3648] transition-colors">
+                              <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedEtaUuids.has(row.uuid)}
+                                  onChange={() => {
+                                    setSelectedEtaUuids(prev => {
+                                      const next = new Set(prev);
+                                      if (next.has(row.uuid)) next.delete(row.uuid);
+                                      else next.add(row.uuid);
+                                      return next;
+                                    });
+                                  }}
+                                  className="w-4 h-4 accent-primary cursor-pointer"
+                                />
+                              </td>
+                              <td className="px-3 py-2 text-gray-200 font-mono">{row.internalId}</td>
+                              <td className="px-3 py-2 text-gray-300 max-w-[180px] truncate" title={row.issuerName}>{row.issuerName}</td>
+                              <td className="px-3 py-2 text-gray-400">{row.dateTimeIssued}</td>
+                              <td className="px-3 py-2 text-left text-green-400 font-medium">{fmt(row.total)} EGP</td>
+                              <td className="px-3 py-2 text-center">
+                                <button
+                                  type="button"
+                                  title="معاينة PDF"
+                                  onClick={() => previewEtaPdf(row)}
+                                  disabled={etaPdfLoading === row.uuid}
+                                  className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-orange-700/30 text-orange-400 hover:text-orange-300 transition-colors disabled:opacity-40"
+                                >
+                                  <span className={`material-icons text-base ${etaPdfLoading === row.uuid ? 'animate-spin text-gray-400' : ''}`}>
+                                    {etaPdfLoading === row.uuid ? 'refresh' : 'picture_as_pdf'}
+                                  </span>
+                                </button>
+                              </td>
+                              <td className="px-3 py-2">
+                                {alreadyImported ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => importEtaInvoice(row)}
+                                    disabled={etaImporting === row.uuid}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-950/40 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors disabled:opacity-50 whitespace-nowrap"
+                                  >
+                                    <span className={`material-icons text-xs ${etaImporting === row.uuid ? 'animate-spin' : ''}`}>
+                                      {etaImporting === row.uuid ? 'refresh' : 'check_circle'}
+                                    </span>
+                                    تم الاستيراد مسبقاً
+                                  </button>
+                                ) : (
+                                  <button type="button" onClick={() => importEtaInvoice(row)}
+                                    disabled={etaImporting === row.uuid}
+                                    className="flex items-center gap-1 px-2 py-1 rounded bg-blue-700/70 hover:bg-blue-600 text-white transition-colors whitespace-nowrap disabled:opacity-50">
+                                    <span className={`material-icons text-xs ${etaImporting === row.uuid ? 'animate-spin' : ''}`}>
+                                      {etaImporting === row.uuid ? 'refresh' : 'download'}
+                                    </span>
+                                    {etaImporting === row.uuid ? '...' : 'استيراد'}
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-center text-gray-500 text-xs py-8">لا توجد نتائج مطابقة للبحث</p>
+                )}
               </div>
             )}
 
             {/* Pagination */}
             {!etaLoading && etaRows.length > 0 && (
               <div className="flex items-center justify-between text-xs text-gray-500">
-                <span>{etaTotalCount > 0 ? `${etaTotalCount} فاتورة مستلمة` : `${etaRows.length} نتيجة`}</span>
+                <span>
+                  {etaSearchQuery.trim()
+                    ? `${filteredAndSortedEtaRows.length} مطابقة`
+                    : (etaTotalCount > 0 ? `${etaTotalCount} فاتورة مستلمة` : `${etaRows.length} نتيجة`)}
+                </span>
                 <div className="flex gap-1">
                   <button type="button" disabled={etaTokenStack.length === 0} onClick={etaPrevPage}
                     className="px-2 py-1 rounded bg-[#1b2130] border border-gray-700 disabled:opacity-40 hover:border-blue-500 transition-colors">‹ السابق</button>
