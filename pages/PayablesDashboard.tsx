@@ -1378,52 +1378,71 @@ const CreateInvoiceScreen: React.FC<{
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-700/50">
-                    {etaRows.map(row => (
-                      <tr key={row.uuid} className="hover:bg-[#2d3648] transition-colors">
-                        <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={selectedEtaUuids.has(row.uuid)}
-                            onChange={() => {
-                              setSelectedEtaUuids(prev => {
-                                const next = new Set(prev);
-                                if (next.has(row.uuid)) next.delete(row.uuid);
-                                else next.add(row.uuid);
-                                return next;
-                              });
-                            }}
-                            className="w-4 h-4 accent-primary cursor-pointer"
-                          />
-                        </td>
-                        <td className="px-3 py-2 text-gray-200 font-mono">{row.internalId}</td>
-                        <td className="px-3 py-2 text-gray-300 max-w-[180px] truncate" title={row.issuerName}>{row.issuerName}</td>
-                        <td className="px-3 py-2 text-gray-400">{row.dateTimeIssued}</td>
-                        <td className="px-3 py-2 text-left text-green-400 font-medium">{fmt(row.total)} EGP</td>
-                        <td className="px-3 py-2 text-center">
-                          <button
-                            type="button"
-                            title="معاينة PDF"
-                            onClick={() => previewEtaPdf(row)}
-                            disabled={etaPdfLoading === row.uuid}
-                            className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-orange-700/30 text-orange-400 hover:text-orange-300 transition-colors disabled:opacity-40"
-                          >
-                            <span className={`material-icons text-base ${etaPdfLoading === row.uuid ? 'animate-spin text-gray-400' : ''}`}>
-                              {etaPdfLoading === row.uuid ? 'refresh' : 'picture_as_pdf'}
-                            </span>
-                          </button>
-                        </td>
-                        <td className="px-3 py-2">
-                          <button type="button" onClick={() => importEtaInvoice(row)}
-                            disabled={etaImporting === row.uuid}
-                            className="flex items-center gap-1 px-2 py-1 rounded bg-blue-700/70 hover:bg-blue-600 text-white transition-colors whitespace-nowrap disabled:opacity-50">
-                            <span className={`material-icons text-xs ${etaImporting === row.uuid ? 'animate-spin' : ''}`}>
-                              {etaImporting === row.uuid ? 'refresh' : 'download'}
-                            </span>
-                            {etaImporting === row.uuid ? '...' : 'استيراد'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {etaRows.map(row => {
+                      const alreadyImported = row.internalId
+                        ? invoices.some(inv => inv.invoiceNo === row.internalId)
+                        : false;
+                      return (
+                        <tr key={row.uuid} className="hover:bg-[#2d3648] transition-colors">
+                          <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedEtaUuids.has(row.uuid)}
+                              onChange={() => {
+                                setSelectedEtaUuids(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(row.uuid)) next.delete(row.uuid);
+                                  else next.add(row.uuid);
+                                  return next;
+                                });
+                              }}
+                              className="w-4 h-4 accent-primary cursor-pointer"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-gray-200 font-mono">{row.internalId}</td>
+                          <td className="px-3 py-2 text-gray-300 max-w-[180px] truncate" title={row.issuerName}>{row.issuerName}</td>
+                          <td className="px-3 py-2 text-gray-400">{row.dateTimeIssued}</td>
+                          <td className="px-3 py-2 text-left text-green-400 font-medium">{fmt(row.total)} EGP</td>
+                          <td className="px-3 py-2 text-center">
+                            <button
+                              type="button"
+                              title="معاينة PDF"
+                              onClick={() => previewEtaPdf(row)}
+                              disabled={etaPdfLoading === row.uuid}
+                              className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-orange-700/30 text-orange-400 hover:text-orange-300 transition-colors disabled:opacity-40"
+                            >
+                              <span className={`material-icons text-base ${etaPdfLoading === row.uuid ? 'animate-spin text-gray-400' : ''}`}>
+                                {etaPdfLoading === row.uuid ? 'refresh' : 'picture_as_pdf'}
+                              </span>
+                            </button>
+                          </td>
+                          <td className="px-3 py-2">
+                            {alreadyImported ? (
+                              <button
+                                type="button"
+                                onClick={() => importEtaInvoice(row)}
+                                disabled={etaImporting === row.uuid}
+                                className="flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-950/40 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors disabled:opacity-50 whitespace-nowrap"
+                              >
+                                <span className={`material-icons text-xs ${etaImporting === row.uuid ? 'animate-spin' : ''}`}>
+                                  {etaImporting === row.uuid ? 'refresh' : 'check_circle'}
+                                </span>
+                                تم الاستيراد مسبقاً
+                              </button>
+                            ) : (
+                              <button type="button" onClick={() => importEtaInvoice(row)}
+                                disabled={etaImporting === row.uuid}
+                                className="flex items-center gap-1 px-2 py-1 rounded bg-blue-700/70 hover:bg-blue-600 text-white transition-colors whitespace-nowrap disabled:opacity-50">
+                                <span className={`material-icons text-xs ${etaImporting === row.uuid ? 'animate-spin' : ''}`}>
+                                  {etaImporting === row.uuid ? 'refresh' : 'download'}
+                                </span>
+                                {etaImporting === row.uuid ? '...' : 'استيراد'}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
