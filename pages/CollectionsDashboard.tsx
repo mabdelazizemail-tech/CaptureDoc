@@ -3027,9 +3027,20 @@ interface MonthlyTodoScreenProps {
 }
 
 const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
+  const formatYearMonth = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  };
+
   const [tasks, setTasks] = useState<ReceivableMonthlyTask[]>([]);
   const [projects, setProjects] = useState<PMProject[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState<string>(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  }); // YYYY-MM
   const [loading, setLoading] = useState(false);
   const [subTab, setSubTab] = useState<'tasks' | 'calendar' | 'projects'>('tasks');
   
@@ -3446,7 +3457,7 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
                 type="button"
                 onClick={() => {
                   const newDate = new Date(year, month - 2, 1);
-                  setSelectedMonth(newDate.toISOString().slice(0, 7));
+                  setSelectedMonth(formatYearMonth(newDate));
                 }}
                 className="w-8 h-8 rounded-lg bg-[#232b3e] hover:bg-gray-700 border border-gray-700 text-gray-300 flex items-center justify-center transition-colors text-sm font-bold"
               >
@@ -3459,7 +3470,7 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
                 type="button"
                 onClick={() => {
                   const newDate = new Date(year, month, 1);
-                  setSelectedMonth(newDate.toISOString().slice(0, 7));
+                  setSelectedMonth(formatYearMonth(newDate));
                 }}
                 className="w-8 h-8 rounded-lg bg-[#232b3e] hover:bg-gray-700 border border-gray-700 text-gray-300 flex items-center justify-center transition-colors text-sm font-bold"
               >
