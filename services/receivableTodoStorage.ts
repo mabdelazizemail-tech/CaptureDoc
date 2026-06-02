@@ -91,20 +91,52 @@ export const ReceivableTodoService = {
 
     if (mode === 'local') {
       const all = getLocalTasks();
-      return all.filter(t => t.task_month === month && t.task_year === year);
+      return all.filter(t => 
+        (t.task_month === month && t.task_year === year) ||
+        (((t.task_year < year) || (t.task_year === year && t.task_month < month)) && t.status !== 'Completed' && t.status !== 'Skipped')
+      );
     }
 
-    const { data, error } = await supabase
+    // 1. Fetch current month's tasks
+    const { data: currentData, error: currentError } = await supabase
       .from('receivable_monthly_tasks')
       .select('*')
       .eq('task_month', month)
       .eq('task_year', year);
 
-    if (error) {
-      console.error('[receivable-todo] load failed:', error.message);
+    if (currentError) {
+      console.error('[receivable-todo] load current month failed:', currentError.message);
       return [];
     }
-    return (data || []).map((t: any) => {
+
+    // 2. Fetch past uncompleted tasks
+    const { data: pastData, error: pastError } = await supabase
+      .from('receivable_monthly_tasks')
+      .select('*')
+      .neq('status', 'Completed')
+      .neq('status', 'Skipped');
+
+    if (pastError) {
+      console.error('[receivable-todo] load past uncompleted failed:', pastError.message);
+    }
+
+    const currentList = currentData || [];
+    const pastList = (pastData || []).filter((t: any) => {
+      const tMonth = Number(t.task_month);
+      const tYear = Number(t.task_year);
+      return tYear < year || (tYear === year && tMonth < month);
+    });
+
+    // 3. Combine and deduplicate
+    const combined = [...currentList];
+    const existingIds = new Set(combined.map(t => t.id));
+    for (const t of pastList) {
+      if (!existingIds.has(t.id)) {
+        combined.push(t);
+      }
+    }
+
+    return combined.map((t: any) => {
       // Robust decoding from notes (in case DB columns aren't updated yet)
       const meta = parseBillingMeta(t.notes);
       return {

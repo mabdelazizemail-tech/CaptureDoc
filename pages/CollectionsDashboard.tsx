@@ -3031,7 +3031,7 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
   const [projects, setProjects] = useState<PMProject[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [loading, setLoading] = useState(false);
-  const [subTab, setSubTab] = useState<'tasks' | 'projects'>('tasks');
+  const [subTab, setSubTab] = useState<'tasks' | 'calendar' | 'projects'>('tasks');
   
   // Filters
   const [search, setSearch] = useState('');
@@ -3138,20 +3138,25 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
   // Statistics Calculation
   const stats = useMemo(() => {
     const activeProjsCount = projects.length;
-    const requiredInvoicingCount = activeProjsCount;
+    
+    // Count tasks for the selected month
+    const thisMonthTasks = tasks.filter(t => t.task_month === month && t.task_year === year);
+    const requiredInvoicingCount = thisMonthTasks.length || activeProjsCount;
+    
     let completedCount = 0;
     let pendingCount = 0;
     let overdueCount = 0;
 
-    projects.forEach(p => {
-      const task = tasks.find(t => t.project_id === p.id);
-      const isCompleted = task?.status === 'Completed';
+    tasks.forEach(task => {
+      const isCompleted = task.status === 'Completed';
       
       if (isCompleted) {
-        completedCount++;
+        if (task.task_month === month && task.task_year === year) {
+          completedCount++;
+        }
       } else {
         pendingCount++;
-        if (task && isTaskOverdue(task)) {
+        if (isTaskOverdue(task)) {
           overdueCount++;
         }
       }
@@ -3164,7 +3169,7 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
       pendingCount,
       overdueCount
     };
-  }, [projects, tasks]);
+  }, [projects, tasks, month, year]);
 
   const triggerToast = (msg: string, type: 'success' | 'error' = 'success') => {
     setToastMessage(msg);
@@ -3340,7 +3345,225 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
     }
   };
 
+  const renderCalendarView = () => {
+    const firstDay = new Date(year, month - 1, 1);
+    const lastDay = new Date(year, month, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDay = firstDay.getDay(); // 0 is Sunday, 1 is Monday, etc.
+    const monthNamesAr = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
 
+    const calendarDays = [];
+    
+    // Add empty slots for days of previous month
+    for (let i = 0; i < startingDay; i++) {
+      calendarDays.push(
+        <div key={`empty-${i}`} className="h-28 bg-[#1b2130]/20 border border-gray-700/20"></div>
+      );
+    }
+
+    // Add days in this month
+    for (let d = 1; d <= daysInMonth; d++) {
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const dateStr = `${year}-${pad(month)}-${pad(d)}`;
+      
+      // Filter tasks whose due_date is on this specific day
+      const dayTasks = filteredTasks.filter(t => t.due_date === dateStr);
+      const isToday = new Date().toISOString().split('T')[0] === dateStr;
+
+      calendarDays.push(
+        <div 
+          key={d} 
+          className={`h-28 border border-gray-700/30 p-2 flex flex-col justify-between transition-all hover:border-primary/50 group/day bg-[#1b2130]/40 ${
+            isToday ? 'ring-2 ring-primary/40 bg-primary/5' : ''
+          }`}
+        >
+          <div className="flex justify-between items-center mb-1">
+            <span className={`text-xs font-bold ${isToday ? 'text-primary' : 'text-gray-400'}`}>{d}</span>
+            {dayTasks.length > 0 && (
+              <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-semibold">
+                {dayTasks.length} مهام
+              </span>
+            )}
+          </div>
+          
+          <div className="flex-1 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+            {dayTasks.map(task => {
+              const isCompleted = task.status === 'Completed';
+              const isOverdue = isTaskOverdue(task);
+              
+              let statusColor = "bg-gray-800 text-gray-400 border-gray-700/50";
+              if (isCompleted) statusColor = "bg-green-950/40 text-green-400 border-green-900/30";
+              else if (isOverdue) statusColor = "bg-red-950/40 text-red-400 border-red-900/30 font-bold";
+              else if (task.status === 'In Progress') statusColor = "bg-blue-950/40 text-blue-300 border-blue-900/30";
+
+              return (
+                <div 
+                  key={task.id}
+                  onClick={() => handleOpenTaskDetails(task)}
+                  className={`text-[10px] p-1 rounded border truncate cursor-pointer transition-colors hover:bg-opacity-80 flex items-center justify-between gap-1 ${statusColor}`}
+                  title={`${task.title} - ${task.status}`}
+                >
+                  <span className="truncate flex-1">{task.title.replace(`إصدار فاتورة - `, '')}</span>
+                  {!isCompleted && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleUpdateTaskStatus(task, 'Completed', 'تم الاعتماد بنجاح بنقرة واحدة من التقويم');
+                      }}
+                      className="w-3.5 h-3.5 rounded-full bg-green-950/80 hover:bg-green-700 border border-green-700/60 text-green-400 hover:text-white flex items-center justify-center transition-all shadow-sm shrink-0"
+                      title="اعتماد كمكتمل بنقرة واحدة"
+                    >
+                      <span className="material-icons text-[8px]" style={{ fontSize: '8px' }}>check</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // Filter past uncompleted tasks
+    const pastUncompletedTasks = filteredTasks.filter(t => {
+      const tMonth = Number(t.task_month);
+      const tYear = Number(t.task_year);
+      return (tYear < year || (tYear === year && tMonth < month)) && t.status !== 'Completed' && t.status !== 'Skipped';
+    });
+
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6" dir="rtl">
+        {/* Main Calendar Grid */}
+        <div className="lg:col-span-8 flex flex-col bg-[#232b3e] rounded-xl border border-gray-700 overflow-hidden">
+          <div className="p-4 bg-[#1b2130] border-b border-gray-700 flex justify-between items-center">
+            <h3 className="font-bold text-white flex items-center gap-2">
+              <span className="material-icons text-primary">calendar_month</span> 
+              تقويم شهر {monthNamesAr[month - 1]} {year}
+            </h3>
+            <div className="flex items-center gap-3">
+              <button 
+                type="button"
+                onClick={() => {
+                  const newDate = new Date(year, month - 2, 1);
+                  setSelectedMonth(newDate.toISOString().slice(0, 7));
+                }}
+                className="w-8 h-8 rounded-lg bg-[#232b3e] hover:bg-gray-700 border border-gray-700 text-gray-300 flex items-center justify-center transition-colors text-sm font-bold"
+              >
+                ᐸ
+              </button>
+              <span className="text-sm font-bold text-white min-w-[100px] text-center">
+                {monthNamesAr[month - 1]} {year}
+              </span>
+              <button 
+                type="button"
+                onClick={() => {
+                  const newDate = new Date(year, month, 1);
+                  setSelectedMonth(newDate.toISOString().slice(0, 7));
+                }}
+                className="w-8 h-8 rounded-lg bg-[#232b3e] hover:bg-gray-700 border border-gray-700 text-gray-300 flex items-center justify-center transition-colors text-sm font-bold"
+              >
+                ᐳ
+              </button>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-7 text-center bg-[#1b2130]/80 text-[11px] font-semibold text-gray-400 py-2 border-b border-gray-700">
+            <div>الأحد</div>
+            <div>الاثنين</div>
+            <div>الثلاثاء</div>
+            <div>الأربعاء</div>
+            <div>الخميس</div>
+            <div>الجمعة</div>
+            <div>السبت</div>
+          </div>
+          
+          <div className="grid grid-cols-7 bg-[#232b3e] divide-x divide-y divide-gray-700/30">
+            {calendarDays}
+          </div>
+        </div>
+
+        {/* Side Panel: Past Uncompleted & Stats */}
+        <div className="lg:col-span-4 space-y-6">
+          {/* Card 1: Past Uncompleted Tasks */}
+          <div className="bg-[#232b3e] rounded-xl border border-gray-700 p-5 space-y-4">
+            <div className="flex items-center gap-2 border-b border-gray-700 pb-3">
+              <span className="material-icons text-red-400 text-lg">notification_important</span>
+              <h3 className="font-bold text-white text-sm">مهام متأخرة معلقة من شهور سابقة</h3>
+            </div>
+            
+            <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+              {pastUncompletedTasks.length === 0 ? (
+                <p className="text-gray-500 text-xs text-center py-6">لا توجد مهام متأخرة معلقة من شهور سابقة! 👍</p>
+              ) : (
+                pastUncompletedTasks.map(task => {
+                  const proj = projects.find(p => p.id === task.project_id);
+                  const projName = proj ? proj.name : 'Unknown';
+                  return (
+                    <div 
+                      key={task.id}
+                      onClick={() => handleOpenTaskDetails(task)}
+                      className="p-3 bg-[#1b2130] rounded-lg border border-red-900/30 hover:border-red-700/50 cursor-pointer transition-all flex items-start gap-2 justify-between"
+                    >
+                      <div className="space-y-1 flex-1 min-w-0 text-right">
+                        <h4 className="text-white text-xs font-semibold truncate">{task.title}</h4>
+                        <p className="text-[10px] text-gray-400 flex items-center gap-1">
+                          <span className="material-icons text-[10px]" style={{ fontSize: '10px' }}>business</span>
+                          {projName}
+                        </p>
+                        <p className="text-[10px] text-red-400 font-semibold flex items-center gap-1">
+                          <span className="material-icons text-[10px]" style={{ fontSize: '10px' }}>event</span>
+                          استحقاق: {task.due_date} ({task.task_month}/{task.task_year})
+                        </p>
+                      </div>
+                      
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUpdateTaskStatus(task, 'Completed', 'تم الاعتماد بنجاح بنقرة واحدة مباشرة من لوحة التقويم الجانبية');
+                        }}
+                        className="w-6 h-6 rounded-full bg-green-950/40 hover:bg-green-700 border border-green-700/60 text-green-400 hover:text-white flex items-center justify-center transition-all shadow-sm shrink-0"
+                        title="اعتماد كمكتمل بنقرة واحدة"
+                      >
+                        <span className="material-icons text-xs">check</span>
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Card 2: Quick stats / legend */}
+          <div className="bg-[#232b3e] rounded-xl border border-gray-700 p-5 space-y-4">
+            <div className="flex items-center gap-2 border-b border-gray-700 pb-3">
+              <span className="material-icons text-primary text-lg">info</span>
+              <h3 className="font-bold text-white text-sm">دليل حالات المهام بالتقويم</h3>
+            </div>
+            <div className="space-y-2.5 text-xs text-gray-300 text-right">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded bg-red-950/40 border border-red-900/30 inline-block shrink-0"></span>
+                <span>مهام متأخرة مستحقة (Overdue)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded bg-blue-950/40 border border-blue-900/30 inline-block shrink-0"></span>
+                <span>مهام قيد العمل (In Progress)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded bg-gray-800 border border-gray-700/50 inline-block shrink-0"></span>
+                <span>مهام معلقة مجدولة (Pending)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded bg-green-950/40 border border-green-900/30 inline-block shrink-0"></span>
+                <span>مهام مكتملة بنجاح (Completed)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -3471,6 +3694,20 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
             <span className="material-icons text-sm">assignment_turned_in</span>
             سجل المهام الشهرية ({filteredTasks.length})
           </button>
+
+          <button
+            type="button"
+            onClick={() => setSubTab('calendar')}
+            className={`px-5 py-2.5 text-sm font-semibold transition-colors border-b-2 -mb-px flex items-center gap-1.5 ${
+              subTab === 'calendar' 
+                ? 'border-primary text-primary' 
+                : 'border-transparent text-gray-400 hover:text-white'
+            }`}
+          >
+            <span className="material-icons text-sm">calendar_month</span>
+            تقويم المهام ({filteredTasks.length})
+          </button>
+
           <button
             type="button"
             onClick={() => setSubTab('projects')}
@@ -3631,6 +3868,9 @@ const MonthlyTodoScreen: React.FC<MonthlyTodoScreenProps> = ({ user }) => {
             )}
           </div>
         )}
+
+        {/* ── Sub-Tab Content: Calendar View ── */}
+        {subTab === 'calendar' && renderCalendarView()}
 
         {/* ── Sub-Tab Content: Projects List ── */}
         {subTab === 'projects' && (
