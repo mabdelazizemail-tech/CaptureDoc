@@ -2063,8 +2063,11 @@ const PaymentEntryScreen: React.FC<{
             <h3 className="text-sm font-semibold text-gray-400 mb-3 flex items-center gap-2">
               <span className="material-icons text-base text-primary">receipt</span>
               اختر الفاتورة
+              <span className="mr-auto text-xs font-normal text-gray-500">
+                {payable.length} فاتورة — إجمالي {fmt(payable.reduce((s, i) => s + balance(i), 0))} EGP
+              </span>
             </h3>
-            <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
+            <div className="space-y-2">
               {payable.length === 0 && (
                 <p className="text-gray-500 text-sm text-center py-4">لا توجد فواتير معتمدة بانتظار الدفع</p>
               )}
