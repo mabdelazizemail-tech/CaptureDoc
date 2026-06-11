@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>مطابقة المشتريات والمبيعات</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>⚖️</text></svg>">
+</head>
+<body>
+
+<aside class="rail">
+  <div class="rail-brand">
+    <div class="rail-logo">⚖</div>
+    <div class="rail-title">المطابقة</div>
+  </div>
+  <nav class="rail-nav">
+    <button class="rail-btn active" data-tab="dashboard">
+      <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+      <span>لوحة المتابعة</span>
+    </button>
+    <button class="rail-btn" data-tab="matching">
+      <svg viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>
+      <span>المطابقة</span>
+      <em id="badge-matching" class="rail-badge" hidden></em>
+    </button>
+    <button class="rail-btn" data-tab="purchases">
+      <svg viewBox="0 0 24 24"><path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49L19.13 4H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/></svg>
+      <span>المشتريات</span>
+    </button>
+    <button class="rail-btn" data-tab="sales">
+      <svg viewBox="0 0 24 24"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>
+      <span>المبيعات</span>
+    </button>
+    <button class="rail-btn" data-tab="eta">
+      <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM10 17l-3.5-3.5 1.41-1.41L10 14.17 15.18 9l1.41 1.41L10 17z"/></svg>
+      <span>مزامنة ETA</span>
+    </button>
+    <button class="rail-btn" data-tab="settings">
+      <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+      <span>الإعدادات</span>
+    </button>
+  </nav>
+  <div class="rail-foot">أداة محلية · v1.0</div>
+</aside>
+
+<main class="content">
+  <header class="topbar">
+    <div>
+      <div class="topbar-overline">شركة بي بي كيه — منظومة الفواتير الإلكترونية</div>
+      <h1 id="page-title">لوحة المتابعة</h1>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn ghost" id="btn-import">
+        <svg viewBox="0 0 24 24"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg>
+        استيراد Excel
+      </button>
+      <button class="btn primary" id="btn-export">
+        <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+        تصدير Excel
+      </button>
+    </div>
+  </header>
+
+  <!-- ـــــــــــــــــــــ لوحة المتابعة ـــــــــــــــــــــ -->
+  <section class="tab" id="tab-dashboard">
+    <div class="hero-grid">
+      <div class="hero-card" id="card-vat-position">
+        <div class="hero-label">صافي ضريبة القيمة المضافة <small>(مبيعات − مشتريات)</small></div>
+        <div class="hero-value" id="kpi-vat-position">—</div>
+        <div class="hero-hint" id="kpi-vat-hint"></div>
+      </div>
+      <div class="hero-card alt" id="card-gross">
+        <div class="hero-label">الفرق الإجمالي <small>(إجمالي المبيعات − إجمالي المشتريات)</small></div>
+        <div class="hero-value" id="kpi-gross-diff">—</div>
+        <div class="hero-hint" id="kpi-net-margin"></div>
+      </div>
+    </div>
+
+    <div class="ledger-grid">
+      <div class="card ledger">
+        <h3 class="ledger-title">المشتريات</h3>
+        <dl>
+          <div><dt>عدد السطور</dt><dd id="kpi-p-count">—</dd></div>
+          <div><dt>الصافي</dt><dd id="kpi-p-net">—</dd></div>
+          <div><dt>ضريبة القيمة المضافة</dt><dd id="kpi-p-vat">—</dd></div>
+          <div class="total"><dt>الإجمالي</dt><dd id="kpi-p-total">—</dd></div>
+        </dl>
+      </div>
+      <div class="card ledger">
+        <h3 class="ledger-title sales">المبيعات</h3>
+        <dl>
+          <div><dt>عدد السطور</dt><dd id="kpi-s-count">—</dd></div>
+          <div><dt>الصافي</dt><dd id="kpi-s-net">—</dd></div>
+          <div><dt>ضريبة القيمة المضافة</dt><dd id="kpi-s-vat">—</dd></div>
+          <div class="total"><dt>الإجمالي</dt><dd id="kpi-s-total">—</dd></div>
+        </dl>
+      </div>
+      <div class="card ledger ops">
+        <h3 class="ledger-title ops">حالة المطابقة</h3>
+        <dl>
+          <div><dt>مطابقات مكتملة</dt><dd id="kpi-matches">—</dd></div>
+          <div><dt>مشتريات غير مرتبطة</dt><dd id="kpi-unmatched-p">—</dd></div>
+          <div><dt>مبيعات غير مرتبطة</dt><dd id="kpi-unmatched-s">—</dd></div>
+          <div class="warn"><dt>مطابقات بفرق كمية</dt><dd id="kpi-qty-mismatch">—</dd></div>
+        </dl>
+        <button class="btn ghost wide" data-goto="matching">الانتقال إلى المطابقة ←</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ـــــــــــــــــــــ المطابقة ـــــــــــــــــــــ -->
+  <section class="tab" id="tab-matching" hidden>
+    <div class="card">
+      <div class="card-head">
+        <h3>المطابقة التلقائية</h3>
+        <div class="row-actions">
+          <button class="btn primary" id="btn-auto-match">تشغيل المطابقة التلقائية</button>
+          <button class="btn brass" id="btn-accept-all" hidden>اعتماد كل المقترحات</button>
+        </div>
+      </div>
+      <div id="suggestions-empty" class="empty">شغِّل المطابقة التلقائية لعرض المقترحات بناءً على الصنف والكمية وتقارب التواريخ.</div>
+      <div class="table-wrap" id="suggestions-wrap" hidden>
+        <table class="tbl" id="tbl-suggestions">
+          <thead><tr>
+            <th>الدقة</th><th>فاتورة الشراء</th><th>الصنف</th><th>كمية الشراء</th>
+            <th>فاتورة البيع</th><th>كمية البيع</th><th>فرق الكمية</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="match-grid">
+      <div class="card">
+        <div class="card-head"><h3>مشتريات غير مرتبطة <em class="count" id="cnt-unmatched-p"></em></h3></div>
+        <div class="table-wrap tall"><table class="tbl selectable" id="tbl-unmatched-p">
+          <thead><tr><th></th><th>التاريخ</th><th>رقم</th><th>المورد</th><th>الصنف</th><th>الكمية</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+      <div class="match-link-col">
+        <button class="btn primary round" id="btn-manual-link" title="ربط السطرين المحددين">
+          <svg viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>
+          ربط
+        </button>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>مبيعات غير مرتبطة <em class="count" id="cnt-unmatched-s"></em></h3></div>
+        <div class="table-wrap tall"><table class="tbl selectable" id="tbl-unmatched-s">
+          <thead><tr><th></th><th>التاريخ</th><th>رقم</th><th>المشتري</th><th>الصنف</th><th>الكمية</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>المطابقات الحالية <em class="count" id="cnt-matches"></em></h3></div>
+      <div class="table-wrap"><table class="tbl" id="tbl-matches">
+        <thead><tr>
+          <th>تاريخ الشراء</th><th>فاتورة الشراء</th><th>المورد</th><th>الصنف</th>
+          <th>كمية الشراء</th><th>تاريخ البيع</th><th>فاتورة البيع</th><th>المشتري</th>
+          <th>كمية البيع</th><th>فرق الكمية</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <!-- ـــــــــــــــــــــ المشتريات / المبيعات ـــــــــــــــــــــ -->
+  <section class="tab" id="tab-purchases" hidden>
+    <div class="card">
+      <div class="card-head">
+        <h3>سطور المشتريات <em class="count" id="cnt-purchases"></em></h3>
+        <div class="row-actions">
+          <input type="search" id="q-purchases" class="input" placeholder="بحث: صنف، مورد، رقم فاتورة…">
+          <button class="btn primary" data-add="purchase">+ إضافة سطر</button>
+        </div>
+      </div>
+      <div class="table-wrap tall"><table class="tbl" id="tbl-purchases">
+        <thead><tr>
+          <th>التاريخ</th><th>رقم الفاتورة</th><th>المورد</th><th>الصنف</th><th>الكمية</th>
+          <th>السعر</th><th>الصافي</th><th>الضريبة</th><th>الإجمالي</th><th>المصدر</th><th>مرتبط</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-sales" hidden>
+    <div class="card">
+      <div class="card-head">
+        <h3>سطور المبيعات <em class="count" id="cnt-sales"></em></h3>
+        <div class="row-actions">
+          <input type="search" id="q-sales" class="input" placeholder="بحث: صنف، مشتري، رقم فاتورة…">
+          <button class="btn primary" data-add="sale">+ إضافة سطر</button>
+        </div>
+      </div>
+      <div class="table-wrap tall"><table class="tbl" id="tbl-sales">
+        <thead><tr>
+          <th>التاريخ</th><th>رقم الفاتورة</th><th>المشتري</th><th>الصنف</th><th>الكمية</th>
+          <th>السعر</th><th>الصافي</th><th>الضريبة</th><th>الإجمالي</th><th>فاتورة ا/رانيا</th><th>المصدر</th><th>مرتبط</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <!-- ـــــــــــــــــــــ مزامنة ETA ـــــــــــــــــــــ -->
+  <section class="tab" id="tab-eta" hidden>
+    <div class="card">
+      <div class="card-head"><h3>سحب الفواتير من منظومة الضرائب المصرية</h3></div>
+      <div id="eta-cred-warning" class="banner warn" hidden>
+        لم يتم إدخال بيانات الاتصال بعد — انتقل إلى <a href="#" data-goto="settings">الإعدادات</a> لإدخال Client ID و Client Secret.
+      </div>
+      <form id="form-sync" class="form-grid">
+        <label>من تاريخ الإصدار<input type="date" id="sync-from" class="input" required></label>
+        <label>إلى تاريخ الإصدار<input type="date" id="sync-to" class="input" required></label>
+        <div class="check-group">
+          <label class="check"><input type="checkbox" id="sync-received" checked> الفواتير الواردة (مشتريات)</label>
+          <label class="check"><input type="checkbox" id="sync-sent" checked> الفواتير الصادرة (مبيعات)</label>
+          <label class="check"><input type="checkbox" id="sync-refresh"> إعادة تحميل المستندات الموجودة</label>
+        </div>
+        <button class="btn primary" id="btn-sync" type="submit">بدء المزامنة</button>
+      </form>
+      <p class="muted">المنظومة تسمح بطلب واحد كل ثانيتين، لذا قد تستغرق المزامنة عدة دقائق حسب عدد الفواتير. النطاقات الأطول من ٣٠ يوماً تُقسَّم تلقائياً.</p>
+      <div id="sync-progress" hidden>
+        <div class="sync-stats">
+          <span class="chip" id="sync-docs">0 مستند</span>
+          <span class="chip" id="sync-lines">0 سطر</span>
+          <span class="chip live" id="sync-state">جارٍ التنفيذ…</span>
+        </div>
+        <pre id="sync-log" class="log" dir="rtl"></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ـــــــــــــــــــــ الإعدادات ـــــــــــــــــــــ -->
+  <section class="tab" id="tab-settings" hidden>
+    <div class="card narrow">
+      <div class="card-head"><h3>إعدادات الاتصال بمنظومة الفواتير (ETA)</h3></div>
+      <form id="form-settings" class="form-col">
+        <label>البيئة
+          <select id="set-env" class="input">
+            <option value="preprod">التجريبية (PreProd)</option>
+            <option value="prod">الفعلية (Production)</option>
+          </select>
+        </label>
+        <label>Client ID<input type="text" id="set-cid" class="input" dir="ltr" autocomplete="off"></label>
+        <label>Client Secret<input type="password" id="set-secret" class="input" dir="ltr" autocomplete="new-password" placeholder=""></label>
+        <label>نسبة ضريبة القيمة المضافة<input type="number" id="set-vat" class="input" step="0.01" min="0" max="1" value="0.14"></label>
+        <div class="row-actions">
+          <button class="btn primary" type="submit">حفظ الإعدادات</button>
+          <button class="btn ghost" type="button" id="btn-test-eta">اختبار الاتصال</button>
+        </div>
+        <p class="muted">تُحفظ البيانات محلياً على هذا الجهاز فقط (ملف data/pbk.db) ولا تُرسل لأي جهة غير منظومة الضرائب الرسمية.</p>
+      </form>
+    </div>
+  </section>
+</main>
+
+<!-- مودال سطر -->
+<dialog id="line-modal">
+  <form id="form-line" method="dialog">
+    <h3 id="line-modal-title">إضافة سطر</h3>
+    <div class="form-grid2">
+      <label>التاريخ<input type="date" id="ln-date" class="input"></label>
+      <label>رقم الفاتورة<input type="text" id="ln-no" class="input"></label>
+      <label id="ln-party-label">المورد<input type="text" id="ln-party" class="input" list="parties-list"></label>
+      <label>الصنف<input type="text" id="ln-item" class="input" list="items-list"></label>
+      <label>الكمية<input type="number" id="ln-qty" class="input" step="any" required></label>
+      <label>سعر الوحدة<input type="number" id="ln-price" class="input" step="any" required></label>
+      <label>الضريبة <small>(اتركه فارغاً = 14%)</small><input type="number" id="ln-vat" class="input" step="any" placeholder="تلقائي"></label>
+      <label id="ln-ref-wrap" hidden>فاتورة ا/رانيا<input type="text" id="ln-ref" class="input"></label>
+      <label id="ln-note-wrap" hidden>ملاحظة<input type="text" id="ln-note" class="input" placeholder="اشعار دائن…"></label>
+    </div>
+    <div class="row-actions end">
+      <button class="btn ghost" value="cancel" formnovalidate>إلغاء</button>
+      <button class="btn primary" id="btn-line-save" value="save">حفظ</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- مودال استيراد -->
+<dialog id="import-modal">
+  <form id="form-import" method="dialog">
+    <h3>استيراد ملف Excel</h3>
+    <p class="muted">يدعم ملف «مطابقة المشتريات والمبيعات» بنفس تنسيق الأعمدة الحالي.</p>
+    <label class="file-drop">
+      <input type="file" id="import-file" accept=".xlsx,.xlsm" required>
+      <span id="import-file-name">اختر الملف أو أسقطه هنا…</span>
+    </label>
+    <div class="check-group">
+      <label class="check"><input type="radio" name="import-mode" value="replace" checked> استبدال البيانات الحالية</label>
+      <label class="check"><input type="radio" name="import-mode" value="append"> الإضافة إلى البيانات الحالية</label>
+    </div>
+    <div id="import-result" class="banner ok" hidden></div>
+    <div class="row-actions end">
+      <button class="btn ghost" value="cancel" formnovalidate>إغلاق</button>
+      <button class="btn primary" id="btn-import-go" value="go">استيراد</button>
+    </div>
+  </form>
+</dialog>
+
+<datalist id="parties-list"></datalist>
+<datalist id="items-list"></datalist>
+<div id="toast-zone"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
