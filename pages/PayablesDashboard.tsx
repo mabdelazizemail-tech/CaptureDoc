@@ -2000,7 +2000,9 @@ const PaymentEntryScreen: React.FC<{
   selectedInvoice: PayableInvoice | null;
   onSave: (inv: PayableInvoice) => void;
   onBack: () => void;
-}> = ({ invoices, selectedInvoice: initSelected, onSave, onBack }) => {
+  onDelete?: (ids: string[]) => void;
+  canDelete?: boolean;
+}> = ({ invoices, selectedInvoice: initSelected, onSave, onBack, onDelete, canDelete }) => {
   const payable = invoices.filter(i => i.approvalStatus === 'Approved' && effectiveAPStatus(i) !== 'Paid');
   const [inv, setInv]           = useState<PayableInvoice | null>(initSelected ?? payable[0] ?? null);
   const [payDate, setPayDate]   = useState(new Date().toISOString().slice(0, 10));
@@ -2011,6 +2013,7 @@ const PaymentEntryScreen: React.FC<{
   const [notes, setNotes]       = useState('');
   const [saved, setSaved]       = useState(false);
   const [err, setErr]           = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const bal = inv ? balance(inv) : 0;
 
@@ -2075,22 +2078,55 @@ const PaymentEntryScreen: React.FC<{
                 const b = balance(i);
                 const aps = effectiveAPStatus(i);
                 return (
-                  <button key={i.id}
-                    onClick={() => setInv(i)}
-                    className={`w-full text-right p-3 rounded-lg border transition-colors ${
-                      inv?.id === i.id ? 'border-primary bg-primary/10' : 'border-gray-700 hover:border-gray-500 bg-[#1b2130]'
-                    }`}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="text-white text-xs font-semibold">{i.invoiceNo}</p>
-                        <p className="text-gray-200 text-[11px]">{i.supplier}</p>
+                  <div key={i.id} className="relative group">
+                    {/* Delete Confirmation Overlay */}
+                    {confirmDeleteId === i.id && (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 rounded-lg backdrop-blur-sm">
+                        <div className="text-center space-y-2 px-3">
+                          <p className="text-red-300 text-xs font-medium">حذف هذه الفاتورة؟</p>
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onDelete?.([i.id]); setConfirmDeleteId(null); if (inv?.id === i.id) setInv(null); }}
+                              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium">
+                              <span className="material-icons text-sm">delete</span>
+                              حذف
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
+                              className="px-3 py-1.5 text-xs bg-gray-600 text-gray-200 rounded-lg hover:bg-gray-500 transition-colors">
+                              إلغاء
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-left">
-                        <p className="text-white text-xs font-bold">{fmt(b)} EGP</p>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${apStatusColor[aps]}`}>{apStatusAr[aps]}</span>
+                    )}
+                    <button
+                      onClick={() => setInv(i)}
+                      className={`w-full text-right p-3 rounded-lg border transition-colors ${
+                        inv?.id === i.id ? 'border-primary bg-primary/10' : 'border-gray-700 hover:border-gray-500 bg-[#1b2130]'
+                      }`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-white text-xs font-semibold">{i.invoiceNo}</p>
+                          <p className="text-gray-200 text-[11px]">{i.supplier}</p>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <div className="text-left">
+                            <p className="text-white text-xs font-bold">{fmt(b)} EGP</p>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${apStatusColor[aps]}`}>{apStatusAr[aps]}</span>
+                          </div>
+                          {canDelete && onDelete && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(i.id); }}
+                              title="حذف الفاتورة"
+                              className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-all duration-200 mt-0.5">
+                              <span className="material-icons text-base">delete_outline</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </button>
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -2601,6 +2637,8 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
           selectedInvoice={payFor}
           onSave={handleSave}
           onBack={() => { setScreen('dashboard'); setActiveTab('dashboard'); }}
+          onDelete={handleDelete}
+          canDelete={canDelete}
         />
       )}
       {screen === 'history' && (
