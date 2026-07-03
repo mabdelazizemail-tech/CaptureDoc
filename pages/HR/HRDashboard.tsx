@@ -4,6 +4,7 @@ import { supabase } from '../../services/supabaseClient';
 import HREmployees from './HREmployees';
 import HRKPIs from './HRKPIs';
 import HRPayroll from './HRPayroll';
+import HREvaluations from './HREvaluations';
 
 interface HRDashboardProps {
     user: User;
@@ -130,6 +131,13 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
                         <span className="material-icons text-[18px]">analytics</span>
                         تقييم الأداء (KPIs)
                     </button>
+                    <button
+                        onClick={() => setActiveTab('evaluations')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'evaluations' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                    >
+                        <span className="material-icons text-[18px]">grading</span>
+                        تقييمات الموظفين
+                    </button>
                 </div>
             </div>
 
@@ -194,6 +202,10 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
 
             {activeTab === 'kpi' && (
                 <HRKPIs user={user} selectedProjectId={selectedProjectId} />
+            )}
+
+            {activeTab === 'evaluations' && (
+                <HREvaluations user={user} selectedProjectId={selectedProjectId} />
             )}
 
             {activeTab === 'payroll' && (
