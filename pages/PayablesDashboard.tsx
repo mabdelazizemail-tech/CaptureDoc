@@ -548,8 +548,10 @@ const InvoiceListScreen: React.FC<{
   onDelete: (ids: string[]) => void;
   onEdit: (inv: PayableInvoice) => void;
   onRequestApproval: (ids: string[]) => void;
+  onBulkApprove: (ids: string[]) => void;
   canDelete: boolean;
-}> = ({ invoices, onOpen, onCreate, onDelete, onEdit, onRequestApproval, canDelete }) => {
+  canApprove: boolean;
+}> = ({ invoices, onOpen, onCreate, onDelete, onEdit, onRequestApproval, onBulkApprove, canDelete, canApprove }) => {
   const [search, setSearch]               = useState('');
   const [filterStatus, setFilterStatus]   = useState<APStatus | 'all'>('all');
   const [filterApproval, setFilterApproval] = useState<ApprovalStatus | 'all'>('all');
@@ -602,6 +604,10 @@ const InvoiceListScreen: React.FC<{
     selected.has(i.id) && effectiveAPStatus(i) !== 'Paid' && i.approvalStatus !== 'Pending' && i.approvalStatus !== 'Approved'
   );
 
+  const selectedPending = sorted.filter(i =>
+    selected.has(i.id) && i.approvalStatus === 'Pending'
+  );
+
   return (
     <div className="space-y-4" dir="rtl">
       {/* Toolbar */}
@@ -640,11 +646,18 @@ const InvoiceListScreen: React.FC<{
             طلب اعتماد ({selectedUnpaidNonPending.length})
           </button>
         )}
+        {canApprove && selected.size > 0 && selectedPending.length > 0 && (
+          <button onClick={() => { onBulkApprove(selectedPending.map(i => i.id)); setSelected(new Set()); }}
+            className="flex items-center gap-1 px-3 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors">
+            <span className="material-icons text-base">check_circle</span>
+            اعتماد ({selectedPending.length})
+          </button>
+        )}
         {canDelete && selected.size > 0 && (
           <button onClick={() => { onDelete([...selected]); setSelected(new Set()); }}
             className="flex items-center gap-1 px-3 py-2 text-sm bg-red-900/40 text-red-400 rounded-lg hover:bg-red-900/60 transition-colors">
-            <span className="material-icons text-base">delete</span>
-            حذف ({selected.size})
+            <span className="material-icons text-base">undo</span>
+            إرجاع لمسودة ({selected.size})
           </button>
         )}
         <button onClick={onCreate}
@@ -2083,13 +2096,13 @@ const PaymentEntryScreen: React.FC<{
                     {confirmDeleteId === i.id && (
                       <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 rounded-lg backdrop-blur-sm">
                         <div className="text-center space-y-2 px-3">
-                          <p className="text-red-300 text-xs font-medium">حذف هذه الفاتورة؟</p>
+                          <p className="text-yellow-300 text-xs font-medium">إرجاع هذه الفاتورة لمسودة؟</p>
                           <div className="flex items-center justify-center gap-2">
                             <button
                               onClick={(e) => { e.stopPropagation(); onDelete?.([i.id]); setConfirmDeleteId(null); if (inv?.id === i.id) setInv(null); }}
-                              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium">
-                              <span className="material-icons text-sm">delete</span>
-                              حذف
+                              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium">
+                              <span className="material-icons text-sm">undo</span>
+                              إرجاع لمسودة
                             </button>
                             <button
                               onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
@@ -2497,10 +2510,43 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
     await persist(updated);
   };
 
+  const handleBulkApprove = async (ids: string[]) => {
+    const now = new Date().toISOString();
+    const updated = invoices.map(inv =>
+      ids.includes(inv.id)
+        ? { ...inv, approvalStatus: 'Approved' as ApprovalStatus, approvedBy: user.username || user.name, approvedAt: now }
+        : inv
+    );
+    await persist(updated);
+
+    // Auto-post supplier invoice JE for each newly approved invoice
+    for (const id of ids) {
+      const inv = updated.find(i => i.id === id);
+      if (inv) {
+        autoPostSupplierInvoice({
+          id: inv.id,
+          invoiceNo: inv.invoiceNo,
+          supplier: inv.supplier,
+          invoiceDate: inv.invoiceDate,
+          amount: inv.amount,
+          tax: inv.tax,
+          total: inv.total,
+          currency: inv.currency,
+          exchangeRate: inv.exchangeRate,
+          invoiceType: inv.invoiceType,
+        }).catch(() => {/* non-blocking */});
+      }
+    }
+  };
+
   const handleDelete = async (ids: string[]) => {
-    const updated = invoices.filter(i => !ids.includes(i.id));
+    const updated = invoices.map(i => {
+      if (!ids.includes(i.id)) return i;
+      const reverted: PayableInvoice = { ...i, approvalStatus: 'Draft' };
+      upsertPayable(reverted);
+      return reverted;
+    });
     setInvoices(updated);
-    await deletePayables(ids);
   };
 
   const recalcStatus = (inv: PayableInvoice): PayableInvoice => {
@@ -2604,7 +2650,9 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
           onDelete={handleDelete}
           onEdit={inv => openEdit(inv)}
           onRequestApproval={handleRequestApproval}
+          onBulkApprove={handleBulkApprove}
           canDelete={canDelete}
+          canApprove={canApprove}
         />
       )}
       {screen === 'create-invoice' && (
