@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import { StorageService } from '../services/storage';
 import { User } from '../services/types';
+import { isRestrictedHrUser } from '../services/userRestrictions';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -15,7 +16,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   useEffect(() => {
     if (sessionUser) {
       const emailLower = (sessionUser.email || sessionUser.username || '').toLowerCase();
-      if (emailLower === 'taher.mohamed@pbkadvisory.com') {
+      if (emailLower === 'taher.mohamed@pbkadvisory.com' || isRestrictedHrUser(sessionUser)) {
         localStorage.setItem('selected_workspace', 'erp');
         onLogin(sessionUser);
       } else if (
