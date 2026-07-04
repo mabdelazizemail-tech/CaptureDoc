@@ -16,6 +16,7 @@ import Sidebar from './components/Sidebar';
 import { User } from './services/types';
 import { supabase } from './services/supabaseClient';
 import { StorageService } from './services/storage';
+import { isRestrictedHrUser } from './services/userRestrictions';
 import CRMModule from './pages/crm';
 
 const FINANCE_ONLY_USERS = ['taher.mohamed@pbkadvisory.com'];
@@ -154,9 +155,9 @@ const AppShell: React.FC<{
               <Route path="/assets" element={<AssetDashboard user={user} />} />
               <Route path="/tickets" element={<TicketSystem user={user} />} />
               <Route path="/hr" element={<HRDashboard user={user} />} />
-              <Route path="/collections" element={<CollectionsDashboard user={user} />} />
-              <Route path="/payables" element={<PayablesDashboard user={user} />} />
-              <Route path="/journal-entries" element={<JournalEntriesDashboard user={user} />} />
+              <Route path="/collections" element={isRestrictedHrUser(user) ? <Navigate to="/hr" replace /> : <CollectionsDashboard user={user} />} />
+              <Route path="/payables" element={isRestrictedHrUser(user) ? <Navigate to="/hr" replace /> : <PayablesDashboard user={user} />} />
+              <Route path="/journal-entries" element={isRestrictedHrUser(user) ? <Navigate to="/hr" replace /> : <JournalEntriesDashboard user={user} />} />
               <Route path="/health-check" element={<HealthCheck user={user} />} />
               <Route path="/debug" element={<DatabaseDebugger />} />
               

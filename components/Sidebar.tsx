@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { User, Role } from '../services/types';
+import { isRestrictedHrUser } from '../services/userRestrictions';
 
 interface SidebarProps {
   user: User;
@@ -100,14 +101,16 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isOpen, toggleSidebar
           { id: 'tickets', label: 'الدعم الفني', icon: 'confirmation_number' },
           { id: 'reports', label: 'التقارير', icon: 'analytics' }
         ];
-      case 'hr_admin':
-        return [
+      case 'hr_admin': {
+        const hrItems: MenuItem[] = [
           { id: 'hr', label: 'الموارد البشرية', icon: 'badge' },
           { id: 'reports', label: 'التحليلات', icon: 'analytics' },
           { id: 'teams', label: 'إدارة المستخدمين', icon: 'groups' },
           { id: 'assets', label: 'إدارة الأصول', icon: 'inventory' },
           { id: 'tickets', label: 'الدعم الفني', icon: 'confirmation_number' },
-          {
+        ];
+        if (!isRestrictedHrUser(user)) {
+          hrItems.push({
             id: 'financial-management',
             label: 'الادارة المالية',
             icon: 'account_balance',
@@ -116,8 +119,10 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isOpen, toggleSidebar
               { id: 'payables', label: 'المدفوعات', icon: 'account_balance_wallet' },
               { id: 'journal-entries', label: 'القيود المحاسبية', icon: 'book' },
             ],
-          },
-        ];
+          });
+        }
+        return hrItems;
+      }
       default:
         return [];
     }

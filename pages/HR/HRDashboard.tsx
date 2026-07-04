@@ -5,18 +5,11 @@ import HREmployees from './HREmployees';
 import HRKPIs from './HRKPIs';
 import HRPayroll from './HRPayroll';
 import HREvaluations from './HREvaluations';
+import { isRestrictedHrUser } from '../../services/userRestrictions';
 
 interface HRDashboardProps {
     user: User;
 }
-
-// Users blocked from the payroll and KPI tabs (ayman.mansour@smartforce-eg.com)
-const PAYROLL_KPI_RESTRICTED_IDS = ['8772b4ea-72fc-45ed-aba9-367c3fb15aa5'];
-const PAYROLL_KPI_RESTRICTED_EMAILS = ['ayman.mansour@smartforce-eg.com'];
-
-const isPayrollKpiRestricted = (user: User) =>
-    PAYROLL_KPI_RESTRICTED_IDS.includes(user.id) ||
-    PAYROLL_KPI_RESTRICTED_EMAILS.includes((user.email || user.username || '').toLowerCase());
 
 const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
     const [metrics, setMetrics] = useState<any>(null);
@@ -27,7 +20,7 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
     const [allProjects, setAllProjects] = useState<{ id: string, name: string }[]>([]);
 
     const isFullAdmin = user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'it_specialist' || user.role === 'hr_admin';
-    const hidePayrollAndKpis = isPayrollKpiRestricted(user);
+    const hidePayrollAndKpis = isRestrictedHrUser(user);
 
     useEffect(() => {
         async function fetchProjects() {
