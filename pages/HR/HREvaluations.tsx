@@ -29,7 +29,6 @@ interface Evaluation {
 interface EvaluationForm {
     employee_id: string;
     score: string;
-    salary_increase: string;
     comments: string;
     evaluation_date: string;
 }
@@ -41,12 +40,33 @@ interface HREvaluationsProps {
 
 const NO_PROJECT = 'بدون مشروع';
 
+// Rating labels shown to the user; stored as numeric scores (column is integer 1-100)
+const RATING_OPTIONS = [
+    { label: 'ممتاز', value: 95 },
+    { label: 'جيد', value: 80 },
+    { label: 'متوسط', value: 60 },
+    { label: 'مقبول', value: 45 }
+];
+
+const ratingLabel = (score: number) =>
+    score >= 85 ? 'ممتاز' : score >= 70 ? 'جيد' : score >= 50 ? 'متوسط' : 'مقبول';
+
+// Accepts a rating label (ممتاز/جيد/متوسط/مقبول) or a numeric score 1-100 (Excel backward compat)
+const parseRating = (raw: any): number | null => {
+    const s = String(raw ?? '').trim();
+    if (s === '') return null;
+    const opt = RATING_OPTIONS.find(o => o.label === s);
+    if (opt) return opt.value;
+    const n = Number(s);
+    if (Number.isInteger(n) && n >= 1 && n <= 100) return n;
+    return null;
+};
+
 const today = () => new Date().toISOString().split('T')[0];
 
 const emptyForm = (): EvaluationForm => ({
     employee_id: '',
     score: '',
-    salary_increase: '',
     comments: '',
     evaluation_date: today()
 });
@@ -65,7 +85,6 @@ const HREvaluations: React.FC<HREvaluationsProps> = ({ user, selectedProjectId }
     // Bulk evaluation state
     const [bulkSelected, setBulkSelected] = useState<string[]>([]);
     const [bulkScore, setBulkScore] = useState('');
-    const [bulkIncrease, setBulkIncrease] = useState('');
     const [bulkComments, setBulkComments] = useState('');
     const [bulkDate, setBulkDate] = useState(today());
     const [bulkSaving, setBulkSaving] = useState(false);
@@ -141,20 +160,6 @@ const HREvaluations: React.FC<HREvaluationsProps> = ({ user, selectedProjectId }
     const formatSalary = (salary?: number) =>
         (salary || salary === 0) ? salary.toLocaleString('en-US') : '—';
 
-    // '' -> null (not provided), invalid -> undefined, otherwise the percent
-    const parseIncreasePercent = (raw: string): number | null | undefined => {
-        if (String(raw).trim() === '') return null;
-        const pct = Number(raw);
-        if (isNaN(pct) || pct < 0 || pct > 100) return undefined;
-        return pct;
-    };
-
-    const increaseAmount = (emp: Employee | undefined, pct: number | null): number | null => {
-        const salary = currentSalaryOf(emp);
-        if (pct === null || salary === undefined) return null;
-        return Math.round(salary * pct) / 100;
-    };
-
     // ----- Project grouping -----
     const projectOf = (emp: Employee) => emp.project || NO_PROJECT;
 
@@ -186,32 +191,21 @@ const HREvaluations: React.FC<HREvaluationsProps> = ({ user, selectedProjectId }
         : null;
 
     // ----- Single evaluation form -----
-    const validateScore = (raw: string): number | null => {
-        const score = Number(raw);
-        if (!Number.isInteger(score) || score < 1 || score > 100) return null;
-        return score;
-    };
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!form.employee_id) { alert('يرجى اختيار الموظف'); return; }
-        const score = validateScore(form.score);
-        if (score === null) { alert('الدرجة يجب أن تكون رقماً صحيحاً بين 1 و 100'); return; }
+        const score = parseRating(form.score);
+        if (score === null) { alert('يرجى اختيار التقييم'); return; }
         if (!form.evaluation_date) { alert('يرجى تحديد تاريخ التقييم'); return; }
         if (form.comments.length > 2000) { alert('الملاحظات طويلة جداً (الحد الأقصى 2000 حرف)'); return; }
-        const increasePct = parseIncreasePercent(form.salary_increase);
-        if (increasePct === undefined) { alert('نسبة الزيادة يجب أن تكون بين 0 و 100'); return; }
 
         setIsSaving(true);
         try {
-            const emp = employees.find(e => e.id === form.employee_id);
             const payload = {
                 employee_id: form.employee_id,
                 score,
                 comments: form.comments.trim() || null,
-                evaluation_date: form.evaluation_date,
-                salary_increase_percent: increasePct,
-                salary_increase_amount: increaseAmount(emp, increasePct)
+                evaluation_date: form.evaluation_date
             };
 
             if (editingId) {
@@ -237,8 +231,8 @@ const HREvaluations: React.FC<HREvaluationsProps> = ({ user, selectedProjectId }
         setEditingId(ev.id);
         setForm({
             employee_id: ev.employee_id,
-            score: String(ev.score),
-            salary_increase: ev.salary_increase_percent !== null && ev.salary_increase_percent !== undefined ? String(ev.salary_increase_percent) : '',
+            // Snap legacy numeric scores to the matching rating option
+            score: String(RATING_OPTIONS.find(o => o.label === ratingLabel(ev.score))?.value ?? ev.score),
             comments: ev.comments || '',
             evaluation_date: ev.evaluation_date
         });
@@ -275,32 +269,24 @@ const HREvaluations: React.FC<HREvaluationsProps> = ({ user, selectedProjectId }
 
     const handleBulkSubmit = async () => {
         if (bulkSelected.length === 0) { alert('يرجى اختيار موظف واحد على الأقل'); return; }
-        const score = validateScore(bulkScore);
-        if (score === null) { alert('الدرجة يجب أن تكون رقماً صحيحاً بين 1 و 100'); return; }
+        const score = parseRating(bulkScore);
+        if (score === null) { alert('يرجى اختيار التقييم'); return; }
         if (!bulkDate) { alert('يرجى تحديد تاريخ التقييم'); return; }
-        const increasePct = parseIncreasePercent(bulkIncrease);
-        if (increasePct === undefined) { alert('نسبة الزيادة يجب أن تكون بين 0 و 100'); return; }
 
         setBulkSaving(true);
         try {
-            const rows = bulkSelected.map(id => {
-                const emp = employees.find(e => e.id === id);
-                return {
-                    employee_id: id,
-                    evaluator_id: user.id,
-                    score,
-                    comments: bulkComments.trim() || null,
-                    evaluation_date: bulkDate,
-                    salary_increase_percent: increasePct,
-                    salary_increase_amount: increaseAmount(emp, increasePct)
-                };
-            });
+            const rows = bulkSelected.map(id => ({
+                employee_id: id,
+                evaluator_id: user.id,
+                score,
+                comments: bulkComments.trim() || null,
+                evaluation_date: bulkDate
+            }));
             const { error } = await supabase.from('hr_employee_evaluations').insert(rows);
             if (error) throw error;
             alert(`تم حفظ التقييم الجماعي لعدد ${rows.length} موظف بنجاح`);
             setBulkSelected([]);
             setBulkScore('');
-            setBulkIncrease('');
             setBulkComments('');
             fetchData();
         } catch (error: any) {
@@ -314,7 +300,7 @@ const HREvaluations: React.FC<HREvaluationsProps> = ({ user, selectedProjectId }
     const TEMPLATE_HEADERS = [
         'employee_code', 'full_name', 'email', 'project', 'department', 'job_title',
         'hire_date', 'basic_salary', 'variable_salary', 'current_salary',
-        'score', 'salary_increase_percent', 'comments', 'evaluation_date'
+        'score', 'comments', 'evaluation_date'
     ];
 
     const downloadTemplate = () => {
@@ -328,7 +314,7 @@ const HREvaluations: React.FC<HREvaluationsProps> = ({ user, selectedProjectId }
             emp.basic_salary ?? '',
             emp.variable_salary ?? '',
             currentSalaryOf(emp) ?? '',
-            '', '', '', ''
+            '', '', ''
         ]);
         const worksheet = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ...rows]);
         const workbook = XLSX.utils.book_new();
@@ -431,14 +417,9 @@ const HREvaluations: React.FC<HREvaluationsProps> = ({ user, selectedProjectId }
                     skippedRows++;
                     continue;
                 }
-                const score = Number(row.score);
-                if (!Number.isInteger(score) || score < 1 || score > 100) {
-                    errorMessages.push(`(${rowLabel}): الدرجة يجب أن تكون رقماً صحيحاً بين 1 و 100`);
-                    continue;
-                }
-                const rowIncrease = parseIncreasePercent(String(row.salary_increase_percent ?? ''));
-                if (rowIncrease === undefined) {
-                    errorMessages.push(`(${rowLabel}): نسبة الزيادة يجب أن تكون بين 0 و 100`);
+                const score = parseRating(row.score);
+                if (score === null) {
+                    errorMessages.push(`(${rowLabel}): التقييم يجب أن يكون (ممتاز، جيد، متوسط، مقبول)`);
                     continue;
                 }
                 evalRows.push({
@@ -446,9 +427,7 @@ const HREvaluations: React.FC<HREvaluationsProps> = ({ user, selectedProjectId }
                     evaluator_id: user.id,
                     score,
                     comments: row.comments ? String(row.comments).trim() : null,
-                    evaluation_date: formatDateForDB(row.evaluation_date) || today(),
-                    salary_increase_percent: rowIncrease,
-                    salary_increase_amount: increaseAmount(emp, rowIncrease)
+                    evaluation_date: formatDateForDB(row.evaluation_date) || today()
                 });
             }
 
@@ -508,8 +487,8 @@ const HREvaluations: React.FC<HREvaluationsProps> = ({ user, selectedProjectId }
                         <span className="material-icons text-3xl">insights</span>
                     </div>
                     <div>
-                        <h3 className="text-gray-500 text-sm font-medium">متوسط الدرجات {filterEmployee !== 'all' ? `— ${employeeName(filterEmployee)}` : ''}</h3>
-                        <p className="text-2xl font-bold mt-1 text-gray-800">{averageScore !== null ? `${averageScore.toFixed(1)} / 100` : '—'}</p>
+                        <h3 className="text-gray-500 text-sm font-medium">متوسط التقييم {filterEmployee !== 'all' ? `— ${employeeName(filterEmployee)}` : ''}</h3>
+                        <p className="text-2xl font-bold mt-1 text-gray-800">{averageScore !== null ? ratingLabel(averageScore) : '—'}</p>
                     </div>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
@@ -591,43 +570,18 @@ const HREvaluations: React.FC<HREvaluationsProps> = ({ user, selectedProjectId }
                             )}
                         </div>
                         <div>
-                            <label className="block text-xs font-bold text-gray-500 mb-1">الدرجة (1 - 100) *</label>
-                            <input
-                                type="number"
-                                min={1}
-                                max={100}
-                                step={1}
-                                className="w-full border rounded-lg px-3 py-2 text-sm"
+                            <label className="block text-xs font-bold text-gray-500 mb-1">التقييم *</label>
+                            <select
+                                className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
                                 value={form.score}
                                 onChange={(e) => setForm({ ...form, score: e.target.value })}
                                 required
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 mb-1">نسبة الزيادة %</label>
-                            <input
-                                type="number"
-                                min={0}
-                                max={100}
-                                step={0.5}
-                                className="w-full border rounded-lg px-3 py-2 text-sm"
-                                placeholder="اختياري"
-                                value={form.salary_increase}
-                                onChange={(e) => setForm({ ...form, salary_increase: e.target.value })}
-                            />
-                            {(() => {
-                                const pct = parseIncreasePercent(form.salary_increase);
-                                const emp = employees.find(e => e.id === form.employee_id);
-                                if (pct === undefined || pct === null || !emp) return null;
-                                const amount = increaseAmount(emp, pct);
-                                const salary = currentSalaryOf(emp);
-                                if (amount === null || salary === undefined) return null;
-                                return (
-                                    <p className="text-[11px] text-green-600 mt-1 font-bold">
-                                        الزيادة: {formatSalary(amount)} ← الراتب الجديد: {formatSalary(salary + amount)}
-                                    </p>
-                                );
-                            })()}
+                            >
+                                <option value="">اختر التقييم...</option>
+                                {RATING_OPTIONS.map(opt => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                            </select>
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-gray-500 mb-1">تاريخ التقييم *</label>
@@ -720,31 +674,19 @@ const HREvaluations: React.FC<HREvaluationsProps> = ({ user, selectedProjectId }
 
                         {/* Shared score inputs */}
                         <div className="space-y-4">
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 mb-1">الدرجة (1 - 100) *</label>
-                                    <input
-                                        type="number"
-                                        min={1}
-                                        max={100}
-                                        step={1}
-                                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">التقييم *</label>
+                                    <select
+                                        className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
                                         value={bulkScore}
                                         onChange={(e) => setBulkScore(e.target.value)}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 mb-1">نسبة الزيادة %</label>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        max={100}
-                                        step={0.5}
-                                        className="w-full border rounded-lg px-3 py-2 text-sm"
-                                        placeholder="اختياري"
-                                        value={bulkIncrease}
-                                        onChange={(e) => setBulkIncrease(e.target.value)}
-                                    />
+                                    >
+                                        <option value="">اختر التقييم...</option>
+                                        {RATING_OPTIONS.map(opt => (
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                    </select>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 mb-1">تاريخ التقييم *</label>
@@ -817,8 +759,7 @@ const HREvaluations: React.FC<HREvaluationsProps> = ({ user, selectedProjectId }
                                     <th className="p-3 text-right font-bold">المشروع</th>
                                     <th className="p-3 text-right font-bold">الراتب الحالي</th>
                                     <th className="p-3 text-right font-bold">تاريخ التقييم</th>
-                                    <th className="p-3 text-center font-bold">الدرجة</th>
-                                    <th className="p-3 text-center font-bold">الزيادة</th>
+                                    <th className="p-3 text-center font-bold">التقييم</th>
                                     <th className="p-3 text-right font-bold">المُقيِّم</th>
                                     <th className="p-3 text-right font-bold">الملاحظات</th>
                                     {canEvaluate && <th className="p-3 text-center font-bold">إجراءات</th>}
@@ -835,18 +776,8 @@ const HREvaluations: React.FC<HREvaluationsProps> = ({ user, selectedProjectId }
                                             <td className="p-3 text-gray-600">{ev.evaluation_date}</td>
                                             <td className="p-3 text-center">
                                                 <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${scoreBadgeClass(ev.score)}`}>
-                                                    {ev.score} / 100
+                                                    {ratingLabel(ev.score)}
                                                 </span>
-                                            </td>
-                                            <td className="p-3 text-center text-gray-600">
-                                                {ev.salary_increase_percent !== null && ev.salary_increase_percent !== undefined
-                                                    ? (
-                                                        <span className="text-green-600 font-bold text-xs">
-                                                            {ev.salary_increase_percent}%
-                                                            {ev.salary_increase_amount !== null && ev.salary_increase_amount !== undefined ? ` (${formatSalary(ev.salary_increase_amount)})` : ''}
-                                                        </span>
-                                                    )
-                                                    : '—'}
                                             </td>
                                             <td className="p-3 text-gray-600">{ev.evaluator_id ? (evaluatorNames[ev.evaluator_id] || '—') : '—'}</td>
                                             <td className="p-3 text-gray-600 max-w-xs whitespace-pre-wrap">{ev.comments || '—'}</td>
