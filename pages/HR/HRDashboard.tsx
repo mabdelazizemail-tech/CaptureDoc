@@ -10,6 +10,14 @@ interface HRDashboardProps {
     user: User;
 }
 
+// Users blocked from the payroll and KPI tabs (ayman.mansour@smartforce-eg.com)
+const PAYROLL_KPI_RESTRICTED_IDS = ['8772b4ea-72fc-45ed-aba9-367c3fb15aa5'];
+const PAYROLL_KPI_RESTRICTED_EMAILS = ['ayman.mansour@smartforce-eg.com'];
+
+const isPayrollKpiRestricted = (user: User) =>
+    PAYROLL_KPI_RESTRICTED_IDS.includes(user.id) ||
+    PAYROLL_KPI_RESTRICTED_EMAILS.includes((user.email || user.username || '').toLowerCase());
+
 const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
     const [metrics, setMetrics] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -19,6 +27,7 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
     const [allProjects, setAllProjects] = useState<{ id: string, name: string }[]>([]);
 
     const isFullAdmin = user.role === 'super_admin' || user.role === 'power_admin' || user.role === 'it_specialist' || user.role === 'hr_admin';
+    const hidePayrollAndKpis = isPayrollKpiRestricted(user);
 
     useEffect(() => {
         async function fetchProjects() {
@@ -117,20 +126,24 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
                         <span className="material-icons text-[18px]">badge</span>
                         إدارة الموظفين
                     </button>
-                    <button
-                        onClick={() => setActiveTab('payroll')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'payroll' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-                    >
-                        <span className="material-icons text-[18px]">payments</span>
-                        الرواتب والمؤثرات
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('kpi')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'kpi' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-                    >
-                        <span className="material-icons text-[18px]">analytics</span>
-                        تقييم الأداء (KPIs)
-                    </button>
+                    {!hidePayrollAndKpis && (
+                        <button
+                            onClick={() => setActiveTab('payroll')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'payroll' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                        >
+                            <span className="material-icons text-[18px]">payments</span>
+                            الرواتب والمؤثرات
+                        </button>
+                    )}
+                    {!hidePayrollAndKpis && (
+                        <button
+                            onClick={() => setActiveTab('kpi')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'kpi' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                        >
+                            <span className="material-icons text-[18px]">analytics</span>
+                            تقييم الأداء (KPIs)
+                        </button>
+                    )}
                     <button
                         onClick={() => setActiveTab('evaluations')}
                         className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'evaluations' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
@@ -200,7 +213,7 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
             )}
 
 
-            {activeTab === 'kpi' && (
+            {activeTab === 'kpi' && !hidePayrollAndKpis && (
                 <HRKPIs user={user} selectedProjectId={selectedProjectId} />
             )}
 
@@ -208,7 +221,7 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ user }) => {
                 <HREvaluations user={user} selectedProjectId={selectedProjectId} />
             )}
 
-            {activeTab === 'payroll' && (
+            {activeTab === 'payroll' && !hidePayrollAndKpis && (
                 <HRPayroll user={user} selectedProjectId={selectedProjectId} />
             )}
 
