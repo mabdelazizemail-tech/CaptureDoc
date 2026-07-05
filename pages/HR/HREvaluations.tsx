@@ -303,23 +303,55 @@ const HREvaluations: React.FC<HREvaluationsProps> = ({ user, selectedProjectId }
         'score', 'comments', 'evaluation_date'
     ];
 
-    const downloadTemplate = () => {
-        const rows = visibleEmployees.map(emp => [
-            emp.employee_code || '',
-            emp.full_name,
-            emp.email || '',
-            emp.project || '',
-            emp.department || '',
-            '', '',
-            emp.basic_salary ?? '',
-            emp.variable_salary ?? '',
-            currentSalaryOf(emp) ?? '',
-            '', '', ''
-        ]);
-        const worksheet = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ...rows]);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Evaluations');
-        XLSX.writeFile(workbook, `Evaluations_Template_${today()}.xlsx`);
+    const downloadTemplate = async () => {
+        // exceljs (lazy-loaded) instead of xlsx: the score column needs an
+        // in-Excel dropdown (data validation), which xlsx CE cannot write.
+        const mod: any = await import('exceljs');
+        const ExcelJS = mod.default ?? mod;
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Evaluations', { views: [{ rightToLeft: true }] });
+
+        sheet.columns = TEMPLATE_HEADERS.map(h => ({
+            header: h,
+            key: h,
+            width: h === 'comments' ? 30 : (h === 'full_name' || h === 'email') ? 28 : 16
+        }));
+        sheet.getRow(1).font = { bold: true };
+
+        visibleEmployees.forEach(emp => sheet.addRow({
+            employee_code: emp.employee_code || '',
+            full_name: emp.full_name,
+            email: emp.email || '',
+            project: emp.project || '',
+            department: emp.department || '',
+            basic_salary: emp.basic_salary ?? '',
+            variable_salary: emp.variable_salary ?? '',
+            current_salary: currentSalaryOf(emp) ?? ''
+        }));
+
+        // Rating dropdown on the score column; extra rows for new employees
+        const scoreCol = TEMPLATE_HEADERS.indexOf('score') + 1;
+        const lastRow = visibleEmployees.length + 1 + 200;
+        const ratingList = RATING_OPTIONS.map(o => o.label).join(',');
+        for (let r = 2; r <= lastRow; r++) {
+            sheet.getCell(r, scoreCol).dataValidation = {
+                type: 'list',
+                allowBlank: true,
+                formulae: [`"${ratingList}"`],
+                showErrorMessage: true,
+                errorTitle: 'قيمة غير صحيحة',
+                error: `اختر من القائمة: ${RATING_OPTIONS.map(o => o.label).join('، ')}`
+            };
+        }
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Evaluations_Template_${today()}.xlsx`;
+        link.click();
+        URL.revokeObjectURL(url);
     };
 
     const formatDateForDB = (val: any): string | null => {
