@@ -2011,7 +2011,7 @@ const InvoiceDetailsScreen: React.FC<{
 const PaymentEntryScreen: React.FC<{
   invoices: PayableInvoice[];
   selectedInvoice: PayableInvoice | null;
-  onSave: (inv: PayableInvoice) => void;
+  onSave: (inv: PayableInvoice) => Promise<boolean> | void;
   onBack: () => void;
   onDelete?: (ids: string[]) => void;
   canDelete?: boolean;
@@ -2030,7 +2030,7 @@ const PaymentEntryScreen: React.FC<{
 
   const bal = inv ? balance(inv) : 0;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!inv) return;
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) { setErr('أدخل مبلغاً صحيحاً'); return; }
@@ -2047,7 +2047,11 @@ const PaymentEntryScreen: React.FC<{
     const newPS: PaymentStatus = newPaid >= newEff ? 'Paid' : 'Partial';
     const newAPS: APStatus     = newPaid >= newEff ? 'Paid' : 'Partially Paid';
     const updated: PayableInvoice = { ...inv, payments: newPayments, paymentStatus: newPS, apStatus: newAPS };
-    onSave(updated);
+    const result = await onSave(updated);
+    if (result === false) {
+      setErr('فشل حفظ الدفعة في قاعدة البيانات — لم يتم تسجيلها. حاول مرة أخرى أو تحقق من الاتصال.');
+      return;
+    }
     setInv(updated);
     setSaved(true);
     setAmount(''); setRef(''); setBank(''); setNotes('');
@@ -2459,18 +2463,26 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
     })();
   }, []);
 
-  const persist = async (updated: PayableInvoice[]) => {
+  // Writes only the changed invoices; `updated` is the full list for local state.
+  // Previously this upserted every invoice on each save, which rewrote the whole
+  // table and risked overwriting other users' concurrent changes.
+  const persist = async (updated: PayableInvoice[], changed: PayableInvoice[]): Promise<boolean> => {
     setInvoices(updated);
-    for (const inv of updated) await upsertPayable(inv);
+    let ok = true;
+    for (const inv of changed) {
+      if (!(await upsertPayable(inv))) ok = false;
+    }
+    return ok;
   };
 
-  const handleSave = async (inv: PayableInvoice) => {
+  const handleSave = async (inv: PayableInvoice): Promise<boolean> => {
     const idx = invoices.findIndex(i => i.id === inv.id);
     const prev = idx >= 0 ? invoices[idx] : null;
     const updated = idx >= 0
       ? invoices.map(i => i.id === inv.id ? inv : i)
       : [...invoices, inv];
-    await persist(updated);
+    const ok = await persist(updated, [inv]);
+    if (!ok) return false;
 
     // Auto-post supplier invoice JE when approval status transitions to Approved
     const wasApproved = prev?.approvalStatus === 'Approved';
@@ -2501,13 +2513,14 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
 
     setScreen(activeTab === 'invoice-list' ? 'invoice-list' : 'dashboard');
     setEditInv(null);
+    return true;
   };
 
   const handleRequestApproval = async (ids: string[]) => {
     const updated = invoices.map(inv =>
       ids.includes(inv.id) ? { ...inv, approvalStatus: 'Pending' as ApprovalStatus } : inv
     );
-    await persist(updated);
+    await persist(updated, updated.filter(inv => ids.includes(inv.id)));
   };
 
   const handleBulkApprove = async (ids: string[]) => {
@@ -2517,7 +2530,7 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
         ? { ...inv, approvalStatus: 'Approved' as ApprovalStatus, approvedBy: user.username || user.name, approvedAt: now }
         : inv
     );
-    await persist(updated);
+    await persist(updated, updated.filter(inv => ids.includes(inv.id)));
 
     // Auto-post supplier invoice JE for each newly approved invoice
     for (const id of ids) {

@@ -245,27 +245,29 @@ export async function loadPayables(): Promise<PayableInvoice[]> {
   return ((data ?? []) as PayableInvoiceRow[]).map(invoiceFromRow);
 }
 
-export async function upsertPayable(invoice: PayableInvoice): Promise<void> {
+export async function upsertPayable(invoice: PayableInvoice): Promise<boolean> {
   const mode = await detectSchema();
 
   if (mode === 'jsonb') {
     const { error } = await supabase
       .from('payables_invoices')
       .upsert({ id: invoice.id, data: invoice, updated_at: new Date().toISOString() });
-    if (error) console.error('[payables] upsert failed:', error);
-    return;
+    if (error) { console.error('[payables] upsert failed:', error); return false; }
+    return true;
   }
 
   const row = invoiceToRow(invoice);
   const { error } = await supabase.from('payables_invoices').upsert(row);
-  if (error) { console.error('[payables] upsert failed:', error); return; }
+  if (error) { console.error('[payables] upsert failed:', error); return false; }
+
+  let ok = true;
 
   // Sync payments
   await supabase.from('payable_payments').delete().eq('invoice_id', invoice.id);
   if (invoice.payments.length > 0) {
     const paymentRows = invoice.payments.map((p) => paymentToRow(p, invoice.id));
     const { error: pErr } = await supabase.from('payable_payments').insert(paymentRows);
-    if (pErr) console.error('[payables] payment sync failed:', pErr);
+    if (pErr) { console.error('[payables] payment sync failed:', pErr); ok = false; }
   }
 
   // Sync deductions
@@ -274,8 +276,10 @@ export async function upsertPayable(invoice: PayableInvoice): Promise<void> {
   if (deds.length > 0) {
     const dedRows = deds.map((d) => deductionToRow(d, invoice.id));
     const { error: dErr } = await supabase.from('payable_deductions').insert(dedRows);
-    if (dErr) console.error('[payables] deduction sync failed:', dErr);
+    if (dErr) { console.error('[payables] deduction sync failed:', dErr); ok = false; }
   }
+
+  return ok;
 }
 
 export async function deletePayables(ids: string[]): Promise<void> {
