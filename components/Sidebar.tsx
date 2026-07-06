@@ -75,6 +75,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isOpen, toggleSidebar
             ],
           },
           ...operationalItems,
+          ...(user.role === 'super_admin' ? [{ id: 'audit-log', label: 'سجل العمليات', icon: 'history_edu' }] : []),
           { id: 'health-check', label: 'فحص النظام', icon: 'monitor_heart' }
         ];
       case 'project_manager':

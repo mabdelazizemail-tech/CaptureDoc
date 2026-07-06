@@ -6,6 +6,7 @@ import SupervisorDashboard from './pages/SupervisorDashboard';
 import AssetDashboard from './pages/AssetDashboard';
 import TicketSystem from './pages/TicketSystem';
 import HealthCheck from './pages/HealthCheck';
+import AuditLog from './pages/AuditLog';
 import DatabaseDebugger from './pages/DatabaseDebugger';
 import HRDashboard from './pages/HR/HRDashboard';
 import ProjectManagementDashboard from './pages/ProjectManagementDashboard';
@@ -52,6 +53,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/collections': 'التحصيلات',
   '/payables': 'المدفوعات — إدارة حسابات الموردين',
   '/journal-entries': 'القيود المحاسبية — دفتر اليومية العام',
+  '/audit-log': 'سجل العمليات',
 };
 
 function getDefaultRoute(user: User): string {
@@ -159,6 +161,7 @@ const AppShell: React.FC<{
               <Route path="/payables" element={isRestrictedHrUser(user) ? <Navigate to="/hr" replace /> : <PayablesDashboard user={user} />} />
               <Route path="/journal-entries" element={isRestrictedHrUser(user) ? <Navigate to="/hr" replace /> : <JournalEntriesDashboard user={user} />} />
               <Route path="/health-check" element={<HealthCheck user={user} />} />
+              <Route path="/audit-log" element={user.role === 'super_admin' ? <AuditLog user={user} /> : <Navigate to={getDefaultRoute(user)} replace />} />
               <Route path="/debug" element={<DatabaseDebugger />} />
               
               {/* Root and catch-all */}
