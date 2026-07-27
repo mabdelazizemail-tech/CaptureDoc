@@ -258,7 +258,8 @@ const paidInEgp = (inv: Invoice): number => {
 // is considered مستحق (Due), unless it's already been fully or partially paid,
 // manually disputed, or is still within the 1-month window.
 const effectiveCollectionStatus = (inv: Invoice): CollectionStatus => {
-  if (inv.payments.length > 0) return 'Paid';
+  if (balance(inv) <= 0) return 'Paid';
+  if (inv.payments.length > 0) return 'Partially Paid';
   return 'Overdue';
 };
 
@@ -342,15 +343,20 @@ const DashboardScreen: React.FC<{
 
   const sent = invoices.filter(i => i.invoiceStatus === 'Sent');
   const totalSentEgp = sent.reduce((s, i) => s + totalInEgp(i), 0);
+  
   const totalDue = invoices
-    .filter(i => effectiveCollectionStatus(i) === 'Overdue')
-    .reduce((s, i) => s + balance(i), 0);
+    .filter(i => ['Due', 'Overdue', 'Partially Paid'].includes(effectiveCollectionStatus(i)))
+    .reduce((s, i) => s + balanceInEgp(i), 0);
+    
   const totalOverdue = invoices
-    .filter(i => effectiveCollectionStatus(i) === 'Overdue')
-    .reduce((s, i) => s + balance(i), 0);
+    .filter(i => ['Overdue', 'Partially Paid'].includes(effectiveCollectionStatus(i)))
+    .reduce((s, i) => s + balanceInEgp(i), 0);
+    
   // Sum ALL payments (EGP) across all invoices, including partial payments and USD-converted
   const totalPaidAmt = invoices.reduce((s, i) => s + paidInEgp(i), 0);
-  const totalRemaining = totalSentEgp - totalPaidAmt;
+  
+  // Remaining balance is the sum of balances of all sent invoices (accounts for withholding tax, etc.)
+  const totalRemaining = sent.reduce((s, i) => s + balanceInEgp(i), 0);
 
   const overdue = invoices.filter(i => effectiveCollectionStatus(i) === 'Overdue');
 
