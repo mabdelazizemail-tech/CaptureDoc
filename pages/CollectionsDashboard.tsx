@@ -8,6 +8,7 @@ import { ReceivableTodoService, ReceivableMonthlyTask } from '../services/receiv
 import { PMStorageService, PMProject } from '../services/pmStorage';
 import { StorageService } from '../services/storage';
 import StatementOfAccount, { StatementAccount, StatementTxn, StatementOpenItem } from '../components/StatementOfAccount';
+import { CUSTOMERS, matchCustomer, canonicalCustomer } from '../services/customerMatch';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,52 +70,6 @@ const totalInEgp = (inv: Invoice): number =>
   inv.currency === 'USD' ? inv.total * (inv.exchangeRate || 0) : inv.total;
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
-
-// Master customer list — shown as dropdown options in the invoice form.
-// OCR output is fuzzy-matched against these to pre-select the right option.
-const CUSTOMERS: string[] = [
-  'زيروكس مصر',
-  'خزنلي للخدمات اللوجيستيه',
-  'الاهلى للخدمات الطبية',
-];
-
-// Strip common Arabic prefixes/noise for fuzzy-matching against CUSTOMERS.
-const simplifyArabic = (s: string): string =>
-  s
-    .normalize('NFKC')
-    .replace(/\u0640/g, '')
-    .replace(/[إأآا]/g, 'ا')
-    .replace(/[ىي]/g, 'ي')
-    .replace(/[ةه]/g, 'ه')
-    .replace(/^\s*(شركة|شركه|مؤسسة|مؤسسه|مصنع|مكتب)\s+/i, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
-
-const matchCustomer = (raw: string): string => {
-  if (!raw) return '';
-  const needle = simplifyArabic(raw);
-  if (!needle) return '';
-  // Exact / containment match first
-  for (const c of CUSTOMERS) {
-    const hay = simplifyArabic(c);
-    if (needle === hay || needle.includes(hay) || hay.includes(needle)) return c;
-  }
-  // Token-overlap fallback: >=50% of tokens in common
-  const needleTokens = new Set(needle.split(' ').filter(t => t.length > 1));
-  let best = '';
-  let bestScore = 0;
-  for (const c of CUSTOMERS) {
-    const hayTokens = simplifyArabic(c).split(' ').filter(t => t.length > 1);
-    const common = hayTokens.filter(t => needleTokens.has(t)).length;
-    const score = common / Math.max(hayTokens.length, 1);
-    if (score > bestScore && score >= 0.5) {
-      bestScore = score;
-      best = c;
-    }
-  }
-  return best;
-};
 
 const SEED: Invoice[] = [
   {
@@ -309,23 +264,6 @@ const TABS = [
   { id: 'monthly-todo', label: 'قائمة المهام الشهرية', icon: 'assignment_turned_in' },
   { id: 'statement', label: 'كشف حساب', icon: 'description' },
 ] as const;
-
-// Collapse spelling variants of the same customer onto one canonical name so
-// a statement isn't split in two (e.g. an OCR'd "شركه زيروكس مصر" and the
-// master-list "زيروكس مصر"). Deliberately strict — prefix/suffix normalisation
-// with exact matching only. The fuzzy token-overlap used by matchCustomer is
-// unsafe here: it would fold unrelated names that merely share a word
-// (e.g. "... زيروكس دوت كوم") into the wrong account.
-const canonicalCustomer = (raw: string): string => {
-  const name = (raw ?? '').trim();
-  if (!name) return '';
-  const strip = (s: string) =>
-    simplifyArabic(s).replace(/\s*(ش\s*\.?\s*م\s*\.?\s*م|ذ\s*\.?\s*م\s*\.?\s*م)\s*$/i, '').trim();
-  const needle = strip(name);
-  if (!needle) return name;
-  for (const c of CUSTOMERS) if (strip(c) === needle) return c;
-  return name;
-};
 
 // Build per-customer statement ledgers (all amounts normalised to EGP).
 const buildCustomerStatements = (invoices: Invoice[]): StatementAccount[] => {
