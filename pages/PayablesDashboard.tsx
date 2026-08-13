@@ -94,7 +94,13 @@ const totalDeductions = (inv: PayableInvoice) =>
 const effectiveTotal = (inv: PayableInvoice) =>
   inv.total - totalDeductions(inv);
 
-const balance = (inv: PayableInvoice) => effectiveTotal(inv) - totalPaid(inv);
+// Settlement tolerance: sub-cent floating-point residuals count as fully paid.
+const PAY_EPS = 0.01;
+
+const balance = (inv: PayableInvoice) => {
+  const b = effectiveTotal(inv) - totalPaid(inv);
+  return Math.abs(b) < PAY_EPS ? 0 : b;
+};
 
 const balanceInEgp = (inv: PayableInvoice): number => {
   const b = balance(inv);
@@ -109,7 +115,7 @@ const paidInEgp = (inv: PayableInvoice): number => {
 const effectiveAPStatus = (inv: PayableInvoice): APStatus => {
   const paid = totalPaid(inv);
   const eff = effectiveTotal(inv);
-  if (paid >= eff && eff > 0) return 'Paid';
+  if (paid >= eff - PAY_EPS && eff > 0) return 'Paid';
   if (paid > 0) return 'Partially Paid';
   if (inv.apStatus === 'On Hold') return 'On Hold';
   if (!inv.dueDate) return inv.apStatus;
@@ -2044,8 +2050,8 @@ const PaymentEntryScreen: React.FC<{
     const newPayments = [...inv.payments, payment];
     const newPaid = newPayments.reduce((s, p) => s + p.amountPaid, 0);
     const newEff  = effectiveTotal(inv);
-    const newPS: PaymentStatus = newPaid >= newEff ? 'Paid' : 'Partial';
-    const newAPS: APStatus     = newPaid >= newEff ? 'Paid' : 'Partially Paid';
+    const newPS: PaymentStatus = newPaid >= newEff - PAY_EPS ? 'Paid' : 'Partial';
+    const newAPS: APStatus     = newPaid >= newEff - PAY_EPS ? 'Paid' : 'Partially Paid';
     const updated: PayableInvoice = { ...inv, payments: newPayments, paymentStatus: newPS, apStatus: newAPS };
     const result = await onSave(updated);
     if (result === false) {
