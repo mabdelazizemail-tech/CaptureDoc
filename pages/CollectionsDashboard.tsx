@@ -8,6 +8,7 @@ import { ReceivableTodoService, ReceivableMonthlyTask } from '../services/receiv
 import { PMStorageService, PMProject } from '../services/pmStorage';
 import { StorageService } from '../services/storage';
 import StatementOfAccount, { StatementAccount, StatementTxn, StatementOpenItem } from '../components/StatementOfAccount';
+import { accountKey, canonicalAccountName } from '../services/accountNames';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -310,29 +311,13 @@ const TABS = [
   { id: 'statement', label: 'كشف حساب', icon: 'description' },
 ] as const;
 
-// Collapse spelling variants of the same customer onto one canonical name so
-// a statement isn't split in two (e.g. an OCR'd "شركه زيروكس مصر" and the
-// master-list "زيروكس مصر"). Deliberately strict — prefix/suffix normalisation
-// with exact matching only. The fuzzy token-overlap used by matchCustomer is
-// unsafe here: it would fold unrelated names that merely share a word
-// (e.g. "... زيروكس دوت كوم") into the wrong account.
-const canonicalCustomer = (raw: string): string => {
-  const name = (raw ?? '').trim();
-  if (!name) return '';
-  const strip = (s: string) =>
-    simplifyArabic(s).replace(/\s*(ش\s*\.?\s*م\s*\.?\s*م|ذ\s*\.?\s*م\s*\.?\s*م)\s*$/i, '').trim();
-  const needle = strip(name);
-  if (!needle) return name;
-  for (const c of CUSTOMERS) if (strip(c) === needle) return c;
-  return name;
-};
-
 // Build per-customer statement ledgers (all amounts normalised to EGP).
 const buildCustomerStatements = (invoices: Invoice[]): StatementAccount[] => {
   const toEgp = (inv: Invoice, v: number) =>
     inv.currency === 'USD' ? v * (inv.exchangeRate || 0) : v;
-  const map  = new Map<string, StatementTxn[]>();
-  const open = new Map<string, StatementOpenItem[]>();
+  const map   = new Map<string, StatementTxn[]>();
+  const open  = new Map<string, StatementOpenItem[]>();
+  const label = new Map<string, string>();
   const push = (name: string, t: StatementTxn) => {
     if (!map.has(name)) map.set(name, []);
     map.get(name)!.push(t);
@@ -340,7 +325,10 @@ const buildCustomerStatements = (invoices: Invoice[]): StatementAccount[] => {
   invoices
     .filter(inv => inv.invoiceStatus !== 'Draft' && inv.invoiceStatus !== 'Cancelled')
     .forEach(inv => {
-      const name = canonicalCustomer(inv.customer);
+      // Spelling variants of one customer must share a key, or the statement
+      // splits a single company's balance across two accounts.
+      const name = accountKey(inv.customer);
+      if (!label.has(name)) label.set(name, canonicalAccountName(inv.customer, CUSTOMERS));
 
       push(name, {
         date: inv.invoiceDate, ref: inv.invoiceNo, description: 'Invoice',
@@ -361,7 +349,11 @@ const buildCustomerStatements = (invoices: Invoice[]): StatementAccount[] => {
         open.get(name)!.push({ ref: inv.invoiceNo, dueDate: inv.dueDate, outstanding: out });
       }
     });
-  return [...map.entries()].map(([name, txns]) => ({ name, txns, openItems: open.get(name) ?? [] }));
+  return [...map.entries()].map(([key, txns]) => ({
+    name: label.get(key) ?? key,
+    txns,
+    openItems: open.get(key) ?? [],
+  }));
 };
 
 // ─── Screen: Dashboard ────────────────────────────────────────────────────────

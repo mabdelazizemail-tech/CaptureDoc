@@ -10,6 +10,7 @@ import { parsePayableInvoicePdf, ParsedPayableInvoice } from '../services/invoic
 import { supabase } from '../services/supabaseClient';
 import { autoPostSupplierInvoice, autoPostSupplierPayment } from '../services/journalAutoPost';
 import StatementOfAccount, { StatementAccount, StatementTxn, StatementOpenItem } from '../components/StatementOfAccount';
+import { accountKey, canonicalAccountName } from '../services/accountNames';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -335,24 +336,6 @@ const TABS = [
   { id: 'statement',     label: 'كشف حساب',          icon: 'description' },
 ] as const;
 
-// Collapse spelling variants of the same supplier onto one canonical name so a
-// statement isn't split in two (e.g. "شركه زيروكس مصر" vs "زيروكس مصر"). Names
-// are grouped only when they are identical after stripping the leading company
-// word and a trailing legal form — never on partial word overlap, which would
-// fold genuinely different suppliers together.
-const supplierKey = (raw: string): string =>
-  (raw ?? '')
-    .normalize('NFKC')
-    .replace(/ـ/g, '')
-    .replace(/[إأآا]/g, 'ا')
-    .replace(/[ىي]/g, 'ي')
-    .replace(/[ةه]/g, 'ه')
-    .replace(/^\s*(شركة|شركه|مؤسسة|مؤسسه|مصنع|مكتب)\s+/i, '')
-    .replace(/\s*(ش\s*\.?\s*م\s*\.?\s*م|ذ\s*\.?\s*م\s*\.?\s*م)\s*$/i, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
-
 // Build per-supplier statement ledgers (all amounts normalised to EGP).
 const buildSupplierStatements = (invoices: PayableInvoice[]): StatementAccount[] => {
   const toEgp = (inv: PayableInvoice, v: number) =>
@@ -368,8 +351,10 @@ const buildSupplierStatements = (invoices: PayableInvoice[]): StatementAccount[]
   invoices
     .filter(inv => inv.approvalStatus === 'Approved')
     .forEach(inv => {
-      const key = supplierKey(inv.supplier) || inv.supplier;
-      if (!label.has(key)) label.set(key, (inv.supplier ?? '').trim());
+      // Spelling variants of one supplier must share a key, or the statement
+      // splits a single company's balance across two accounts.
+      const key = accountKey(inv.supplier);
+      if (!label.has(key)) label.set(key, canonicalAccountName(inv.supplier, SUPPLIERS));
 
       push(key, {
         date: inv.invoiceDate, ref: inv.invoiceNo, description: 'Supplier invoice',
