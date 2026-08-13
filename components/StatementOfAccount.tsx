@@ -6,15 +6,23 @@ import { CAPTURE_DOC_LOGO } from './captureDocLogo';
 export interface StatementTxn {
   date: string;        // ISO yyyy-mm-dd
   ref: string;         // invoice no / payment or note reference
-  description: string; // البيان
+  description: string; // English label
   debit: number;       // increases the amount owed (EGP)
   credit: number;      // reduces the amount owed (EGP)
+}
+
+// An open (still-outstanding) invoice, used for the aging summary.
+export interface StatementOpenItem {
+  ref: string;
+  dueDate: string;     // ISO yyyy-mm-dd (may be empty)
+  outstanding: number; // EGP, > 0
 }
 
 // One selectable account (a customer or a supplier) with its full history.
 export interface StatementAccount {
   name: string;
   txns: StatementTxn[];
+  openItems?: StatementOpenItem[];
 }
 
 interface Props {
@@ -27,10 +35,20 @@ interface Props {
 const fmt = (n: number) =>
   n.toLocaleString('en-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const money = (n: number) => `EGP ${fmt(n)}`;
+
 const fmtDate = (iso: string) => {
   if (!iso) return '—';
   const [y, m, d] = iso.split('-');
   return d && m && y ? `${d}/${m}/${y}` : iso;
+};
+
+const fmtLong = (iso: string) => {
+  if (!iso) return '—';
+  const dt = new Date(`${iso}T00:00:00`);
+  return isNaN(dt.getTime())
+    ? iso
+    : dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -54,9 +72,19 @@ const StatementOfAccount: React.FC<Props> = ({ kind, accounts, onBack }) => {
   const [fromDate, setFromDate] = useState(earliest);
   const [toDate, setToDate]     = useState(today());
 
-  // Keep the "from" default in sync when the selected account changes.
-  React.useEffect(() => { setFromDate(earliest); }, [earliest, accountName]);
+  // Reset the range only when the user actually switches account — never on
+  // re-render. (Keying off `earliest` alone would clobber a date the user just
+  // picked, since the parent rebuilds the accounts array on every render.)
+  const lastAccount = React.useRef(accountName);
+  React.useEffect(() => {
+    if (lastAccount.current !== accountName) {
+      lastAccount.current = accountName;
+      setFromDate(earliest);
+      setToDate(today());
+    }
+  }, [accountName, earliest]);
 
+  // Ledger for the selected period (with opening balance + running balance).
   const model = useMemo(() => {
     const txns = [...(account?.txns ?? [])].sort((a, b) => a.date.localeCompare(b.date));
     const opening = txns
@@ -75,10 +103,17 @@ const StatementOfAccount: React.FC<Props> = ({ kind, accounts, onBack }) => {
     return { opening, rows, totalDebit, totalCredit, closing: running };
   }, [account, fromDate, toDate]);
 
-  const kindLabel = kind === 'customer' ? 'العميل' : 'المورد';
-  const owedLabel = kind === 'customer'
-    ? 'إجمالي المستحق على العميل'   // customer owes us
-    : 'إجمالي المستحق للمورد';       // we owe supplier
+  // Aging snapshot as of the statement "to" date.
+  const aging = useMemo(() => {
+    const items = account?.openItems ?? [];
+    const totalOpen = items.reduce((s, i) => s + i.outstanding, 0);
+    const overdue = items
+      .filter(i => i.dueDate && i.dueDate < toDate)
+      .reduce((s, i) => s + i.outstanding, 0);
+    return { totalOpen, overdue, current: totalOpen - overdue };
+  }, [account, toDate]);
+
+  const openLabel = kind === 'customer' ? 'Total open balance' : 'Total payable balance';
 
   return (
     <div dir="rtl" className="space-y-5">
@@ -104,7 +139,7 @@ const StatementOfAccount: React.FC<Props> = ({ kind, accounts, onBack }) => {
 
       <div className="soa-no-print bg-[#232b3e] rounded-xl border border-gray-700 p-4 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
         <div className="md:col-span-2">
-          <label className="block text-xs text-gray-400 mb-1">{kindLabel}</label>
+          <label className="block text-xs text-gray-400 mb-1">{kind === 'customer' ? 'العميل' : 'المورد'}</label>
           <select
             value={accountName}
             onChange={e => setAccountName(e.target.value)}
@@ -134,59 +169,69 @@ const StatementOfAccount: React.FC<Props> = ({ kind, accounts, onBack }) => {
         </div>
       </div>
 
-      {/* ── The printable statement (paper) ── */}
+      {/* ── The printable statement (paper, English only) ── */}
       <div id="soa-print" dir="ltr"
         className="bg-white text-[#1a1a1a] rounded-xl border border-gray-300 shadow-sm mx-auto max-w-[820px] p-8 md:p-10">
 
-        {/* Letterhead */}
-        <div className="pb-3" style={{ borderBottom: '3px solid #344F21' }}>
-          <img src={CAPTURE_DOC_LOGO} alt="Capture Doc" style={{ height: 40, width: 'auto' }} />
-        </div>
-
-        {/* Title + date */}
-        <div className="flex items-start justify-between mt-6">
-          <h1 className="text-xl font-bold tracking-wide">STATEMENT OF ACCOUNT</h1>
-          <div className="text-sm text-right">
-            <span className="text-gray-500">Date:&nbsp;</span>
-            <span className="font-medium">{fmtDate(today())}</span>
+        {/* Letterhead: logo left, title + as-of right */}
+        <div className="flex items-end justify-between pb-3" style={{ borderBottom: '3px solid #344F21' }}>
+          <img src={CAPTURE_DOC_LOGO} alt="Capture Doc" style={{ height: 56, width: 'auto' }} />
+          <div className="text-right">
+            <div className="text-lg font-bold tracking-wide" style={{ color: '#1d3a5c' }}>STATEMENT OF ACCOUNT</div>
+            <div className="text-xs font-semibold mt-1" style={{ color: '#1d3a5c' }}>As of {fmtLong(toDate)}</div>
           </div>
         </div>
 
-        {/* Statement for + period */}
-        <div className="mt-4 text-sm space-y-1">
-          <div>
-            <span className="text-gray-500">Statement for:&nbsp;</span>
-            <span className="font-semibold" dir="auto">{account?.name ?? '—'}</span>
+        {/* Statement-for card */}
+        <div className="mt-6 rounded-lg border px-4 py-3 max-w-[380px]"
+             style={{ borderColor: '#d8dee6' }}>
+          <div className="text-[11px] font-semibold tracking-[0.14em] text-gray-500">STATEMENT FOR</div>
+          <div className="text-lg font-bold mt-0.5" dir="auto">{account?.name ?? '—'}</div>
+          <div className="text-xs text-gray-500 mt-1">
+            Period: {fmtDate(fromDate)} — {fmtDate(toDate)}
           </div>
-          <div className="text-gray-500">
-            Period:&nbsp;
-            <span className="text-[#1a1a1a]">{fmtDate(fromDate)}</span> — <span className="text-[#1a1a1a]">{fmtDate(toDate)}</span>
+        </div>
+
+        {/* KPI cards: total / overdue / current */}
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="rounded-lg px-4 py-3" style={{ background: '#1d3a5c' }}>
+            <div className="text-[11px] font-semibold tracking-[0.12em]" style={{ color: 'rgba(255,255,255,0.72)' }}>
+              {openLabel.toUpperCase()}
+            </div>
+            <div className="text-xl font-bold mt-1 text-white">{money(aging.totalOpen)}</div>
+          </div>
+          <div className="rounded-lg px-4 py-3" style={{ background: '#fdecec', border: '1px solid #f4cccc' }}>
+            <div className="text-[11px] font-semibold tracking-[0.12em]" style={{ color: '#b3403a' }}>OVERDUE</div>
+            <div className="text-xl font-bold mt-1" style={{ color: '#a3271f' }}>{money(aging.overdue)}</div>
+          </div>
+          <div className="rounded-lg px-4 py-3" style={{ background: '#e9f4ec', border: '1px solid #cfe6d6' }}>
+            <div className="text-[11px] font-semibold tracking-[0.12em]" style={{ color: '#2c7350' }}>CURRENT / DUE TODAY</div>
+            <div className="text-xl font-bold mt-1" style={{ color: '#206F47' }}>{money(aging.current)}</div>
           </div>
         </div>
 
         {/* Ledger */}
-        <table className="w-full mt-6 text-sm border-collapse">
+        <table className="w-full mt-7 text-sm border-collapse">
           <thead>
             <tr style={{ background: '#344F21', color: '#fff' }}>
-              <th className="text-left  font-semibold px-3 py-2">Date<span className="font-normal text-[11px] opacity-80"> التاريخ</span></th>
-              <th className="text-left  font-semibold px-3 py-2">Reference<span className="font-normal text-[11px] opacity-80"> المرجع</span></th>
-              <th className="text-left  font-semibold px-3 py-2">Description<span className="font-normal text-[11px] opacity-80"> البيان</span></th>
-              <th className="text-right font-semibold px-3 py-2">Debit<span className="font-normal text-[11px] opacity-80"> مدين</span></th>
-              <th className="text-right font-semibold px-3 py-2">Credit<span className="font-normal text-[11px] opacity-80"> دائن</span></th>
-              <th className="text-right font-semibold px-3 py-2">Balance<span className="font-normal text-[11px] opacity-80"> الرصيد</span></th>
+              <th className="text-left  font-semibold px-3 py-2">Date</th>
+              <th className="text-left  font-semibold px-3 py-2">Reference</th>
+              <th className="text-left  font-semibold px-3 py-2">Description</th>
+              <th className="text-right font-semibold px-3 py-2">Debit</th>
+              <th className="text-right font-semibold px-3 py-2">Credit</th>
+              <th className="text-right font-semibold px-3 py-2">Balance</th>
             </tr>
           </thead>
           <tbody>
-            {/* Opening balance */}
             <tr style={{ background: '#f3f5f2' }}>
-              <td className="px-3 py-2" colSpan={5}><em>Opening balance — رصيد افتتاحي ({fmtDate(fromDate)})</em></td>
+              <td className="px-3 py-2" colSpan={5}><em>Opening balance ({fmtDate(fromDate)})</em></td>
               <td className="px-3 py-2 text-right font-semibold">{fmt(model.opening)}</td>
             </tr>
 
             {model.rows.length === 0 && (
               <tr>
                 <td className="px-3 py-6 text-center text-gray-400" colSpan={6}>
-                  لا توجد حركات خلال الفترة المحددة — No movements in the selected period
+                  No movements in the selected period
                 </td>
               </tr>
             )}
@@ -204,26 +249,13 @@ const StatementOfAccount: React.FC<Props> = ({ kind, accounts, onBack }) => {
           </tbody>
           <tfoot>
             <tr style={{ borderTop: '2px solid #344F21' }}>
-              <td className="px-3 py-2 font-semibold" colSpan={3}>Totals — الإجماليات</td>
+              <td className="px-3 py-2 font-semibold" colSpan={3}>Totals</td>
               <td className="px-3 py-2 text-right font-semibold">{fmt(model.totalDebit)}</td>
               <td className="px-3 py-2 text-right font-semibold">{fmt(model.totalCredit)}</td>
               <td className="px-3 py-2 text-right font-semibold">{fmt(model.closing)}</td>
             </tr>
           </tfoot>
         </table>
-
-        {/* Closing summary */}
-        <div className="mt-6 flex justify-end">
-          <div className="w-full max-w-[320px] rounded-lg px-4 py-3"
-               style={{ background: '#f3f5f2', border: '1px solid #d8e0d2' }}>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-600">{owedLabel}</span>
-              <span className="text-lg font-bold" style={{ color: model.closing > 0 ? '#a11' : '#206F47' }}>
-                {fmt(model.closing)} <span className="text-xs font-normal text-gray-500">EGP</span>
-              </span>
-            </div>
-          </div>
-        </div>
 
         <p className="mt-4 text-[11px] text-gray-400">
           Amounts shown in EGP. USD invoices are converted at their recorded exchange rate.

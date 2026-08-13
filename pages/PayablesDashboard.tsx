@@ -9,7 +9,7 @@ import {
 import { parsePayableInvoicePdf, ParsedPayableInvoice } from '../services/invoicePdfParser';
 import { supabase } from '../services/supabaseClient';
 import { autoPostSupplierInvoice, autoPostSupplierPayment } from '../services/journalAutoPost';
-import StatementOfAccount, { StatementAccount, StatementTxn } from '../components/StatementOfAccount';
+import StatementOfAccount, { StatementAccount, StatementTxn, StatementOpenItem } from '../components/StatementOfAccount';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -339,7 +339,8 @@ const TABS = [
 const buildSupplierStatements = (invoices: PayableInvoice[]): StatementAccount[] => {
   const toEgp = (inv: PayableInvoice, v: number) =>
     inv.currency === 'USD' ? v * (inv.exchangeRate || 0) : v;
-  const map = new Map<string, StatementTxn[]>();
+  const map  = new Map<string, StatementTxn[]>();
+  const open = new Map<string, StatementOpenItem[]>();
   const push = (name: string, t: StatementTxn) => {
     if (!map.has(name)) map.set(name, []);
     map.get(name)!.push(t);
@@ -348,19 +349,25 @@ const buildSupplierStatements = (invoices: PayableInvoice[]): StatementAccount[]
     .filter(inv => inv.approvalStatus === 'Approved')
     .forEach(inv => {
       push(inv.supplier, {
-        date: inv.invoiceDate, ref: inv.invoiceNo, description: 'فاتورة مورد — Supplier invoice',
+        date: inv.invoiceDate, ref: inv.invoiceNo, description: 'Supplier invoice',
         debit: toEgp(inv, inv.total), credit: 0,
       });
       (inv.payments ?? []).forEach(p => push(inv.supplier, {
-        date: p.paymentDate, ref: p.referenceNo || '—', description: `دفعة — Payment (${p.paymentMethod})`,
+        date: p.paymentDate, ref: p.referenceNo || '—', description: `Payment — ${p.paymentMethod}`,
         debit: 0, credit: p.amountPaidEgp ?? toEgp(inv, p.amountPaid),
       }));
       (inv.deductions ?? []).forEach(d => push(inv.supplier, {
-        date: d.date, ref: d.referenceNo || '—', description: `إشعار خصم — Deduction (${d.reason || ''})`.trim(),
+        date: d.date, ref: d.referenceNo || '—', description: `Deduction note${d.reason ? ` — ${d.reason}` : ''}`,
         debit: 0, credit: toEgp(inv, d.amount),
       }));
+
+      const out = balanceInEgp(inv);
+      if (out > 0) {
+        if (!open.has(inv.supplier)) open.set(inv.supplier, []);
+        open.get(inv.supplier)!.push({ ref: inv.invoiceNo, dueDate: inv.dueDate, outstanding: out });
+      }
     });
-  return [...map.entries()].map(([name, txns]) => ({ name, txns }));
+  return [...map.entries()].map(([name, txns]) => ({ name, txns, openItems: open.get(name) ?? [] }));
 };
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
@@ -2478,6 +2485,8 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
   const [loading, setLoading]         = useState(true);
   const [screen, setScreen]           = useState<Screen>('dashboard');
   const [activeTab, setActiveTab]     = useState<'dashboard' | 'invoice-list' | 'payment-entry' | 'history' | 'statement'>('dashboard');
+  // Stable across renders so the statement screen doesn't reset its date range.
+  const statementAccounts = useMemo(() => buildSupplierStatements(invoices), [invoices]);
   const [selectedInv, setSelectedInv] = useState<PayableInvoice | null>(null);
   const [editInv, setEditInv]         = useState<PayableInvoice | null>(null);
   const [payFor, setPayFor]           = useState<PayableInvoice | null>(null);
@@ -2749,7 +2758,7 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
       {screen === 'statement' && (
         <StatementOfAccount
           kind="supplier"
-          accounts={buildSupplierStatements(invoices)}
+          accounts={statementAccounts}
           onBack={() => { setScreen('dashboard'); setActiveTab('dashboard'); }}
         />
       )}

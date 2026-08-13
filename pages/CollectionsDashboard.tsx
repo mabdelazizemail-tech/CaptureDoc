@@ -7,7 +7,7 @@ import { autoPostInvoiceIssuance, autoPostPaymentReceived, autoPostCreditNote } 
 import { ReceivableTodoService, ReceivableMonthlyTask } from '../services/receivableTodoStorage';
 import { PMStorageService, PMProject } from '../services/pmStorage';
 import { StorageService } from '../services/storage';
-import StatementOfAccount, { StatementAccount, StatementTxn } from '../components/StatementOfAccount';
+import StatementOfAccount, { StatementAccount, StatementTxn, StatementOpenItem } from '../components/StatementOfAccount';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -314,7 +314,8 @@ const TABS = [
 const buildCustomerStatements = (invoices: Invoice[]): StatementAccount[] => {
   const toEgp = (inv: Invoice, v: number) =>
     inv.currency === 'USD' ? v * (inv.exchangeRate || 0) : v;
-  const map = new Map<string, StatementTxn[]>();
+  const map  = new Map<string, StatementTxn[]>();
+  const open = new Map<string, StatementOpenItem[]>();
   const push = (name: string, t: StatementTxn) => {
     if (!map.has(name)) map.set(name, []);
     map.get(name)!.push(t);
@@ -323,19 +324,25 @@ const buildCustomerStatements = (invoices: Invoice[]): StatementAccount[] => {
     .filter(inv => inv.invoiceStatus !== 'Draft' && inv.invoiceStatus !== 'Cancelled')
     .forEach(inv => {
       push(inv.customer, {
-        date: inv.invoiceDate, ref: inv.invoiceNo, description: 'فاتورة — Invoice',
+        date: inv.invoiceDate, ref: inv.invoiceNo, description: 'Invoice',
         debit: toEgp(inv, inv.total), credit: 0,
       });
       (inv.payments ?? []).forEach(p => push(inv.customer, {
-        date: p.receiptDate, ref: p.referenceNo || '—', description: `تحصيل — Payment received (${p.paymentMethod})`,
+        date: p.receiptDate, ref: p.referenceNo || '—', description: `Payment received — ${p.paymentMethod}`,
         debit: 0, credit: p.amountReceivedEgp ?? toEgp(inv, p.amountReceived),
       }));
       (inv.creditNotes ?? []).forEach(c => push(inv.customer, {
-        date: c.date, ref: c.referenceNo || '—', description: `إشعار دائن — Credit note (${c.reason || ''})`.trim(),
+        date: c.date, ref: c.referenceNo || '—', description: `Credit note${c.reason ? ` — ${c.reason}` : ''}`,
         debit: 0, credit: toEgp(inv, c.amount),
       }));
+
+      const out = balanceInEgp(inv);
+      if (out > 0) {
+        if (!open.has(inv.customer)) open.set(inv.customer, []);
+        open.get(inv.customer)!.push({ ref: inv.invoiceNo, dueDate: inv.dueDate, outstanding: out });
+      }
     });
-  return [...map.entries()].map(([name, txns]) => ({ name, txns }));
+  return [...map.entries()].map(([name, txns]) => ({ name, txns, openItems: open.get(name) ?? [] }));
 };
 
 // ─── Screen: Dashboard ────────────────────────────────────────────────────────
@@ -4323,6 +4330,8 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
 
   const [screen, setScreen] = useState<Screen>('dashboard');
   const [activeTab, setActiveTab] = useState<'dashboard' | 'invoice-list' | 'payment-entry' | 'history' | 'monthly-todo' | 'statement'>('dashboard');
+  // Stable across renders so the statement screen doesn't reset its date range.
+  const statementAccounts = useMemo(() => buildCustomerStatements(invoices), [invoices]);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
@@ -4659,7 +4668,7 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
       {screen === 'statement' && (
         <StatementOfAccount
           kind="customer"
-          accounts={buildCustomerStatements(invoices)}
+          accounts={statementAccounts}
           onBack={() => { setScreen('dashboard'); setActiveTab('dashboard'); }}
         />
       )}
