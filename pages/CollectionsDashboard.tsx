@@ -74,7 +74,7 @@ const totalInEgp = (inv: Invoice): number =>
 // OCR output is fuzzy-matched against these to pre-select the right option.
 const CUSTOMERS: string[] = [
   'زيروكس مصر',
-  'خزتلي للخدمات اللوجيستيه',
+  'خزنلي للخدمات اللوجيستيه',
   'الاهلى للخدمات الطبية',
 ];
 
@@ -310,6 +310,23 @@ const TABS = [
   { id: 'statement', label: 'كشف حساب', icon: 'description' },
 ] as const;
 
+// Collapse spelling variants of the same customer onto one canonical name so
+// a statement isn't split in two (e.g. an OCR'd "شركه زيروكس مصر" and the
+// master-list "زيروكس مصر"). Deliberately strict — prefix/suffix normalisation
+// with exact matching only. The fuzzy token-overlap used by matchCustomer is
+// unsafe here: it would fold unrelated names that merely share a word
+// (e.g. "... زيروكس دوت كوم") into the wrong account.
+const canonicalCustomer = (raw: string): string => {
+  const name = (raw ?? '').trim();
+  if (!name) return '';
+  const strip = (s: string) =>
+    simplifyArabic(s).replace(/\s*(ش\s*\.?\s*م\s*\.?\s*م|ذ\s*\.?\s*م\s*\.?\s*م)\s*$/i, '').trim();
+  const needle = strip(name);
+  if (!needle) return name;
+  for (const c of CUSTOMERS) if (strip(c) === needle) return c;
+  return name;
+};
+
 // Build per-customer statement ledgers (all amounts normalised to EGP).
 const buildCustomerStatements = (invoices: Invoice[]): StatementAccount[] => {
   const toEgp = (inv: Invoice, v: number) =>
@@ -323,23 +340,25 @@ const buildCustomerStatements = (invoices: Invoice[]): StatementAccount[] => {
   invoices
     .filter(inv => inv.invoiceStatus !== 'Draft' && inv.invoiceStatus !== 'Cancelled')
     .forEach(inv => {
-      push(inv.customer, {
+      const name = canonicalCustomer(inv.customer);
+
+      push(name, {
         date: inv.invoiceDate, ref: inv.invoiceNo, description: 'Invoice',
         debit: toEgp(inv, inv.total), credit: 0,
       });
-      (inv.payments ?? []).forEach(p => push(inv.customer, {
+      (inv.payments ?? []).forEach(p => push(name, {
         date: p.receiptDate, ref: p.referenceNo || '—', description: `Payment received — ${p.paymentMethod}`,
         debit: 0, credit: p.amountReceivedEgp ?? toEgp(inv, p.amountReceived),
       }));
-      (inv.creditNotes ?? []).forEach(c => push(inv.customer, {
+      (inv.creditNotes ?? []).forEach(c => push(name, {
         date: c.date, ref: c.referenceNo || '—', description: `Credit note${c.reason ? ` — ${c.reason}` : ''}`,
         debit: 0, credit: toEgp(inv, c.amount),
       }));
 
       const out = balanceInEgp(inv);
       if (out > 0) {
-        if (!open.has(inv.customer)) open.set(inv.customer, []);
-        open.get(inv.customer)!.push({ ref: inv.invoiceNo, dueDate: inv.dueDate, outstanding: out });
+        if (!open.has(name)) open.set(name, []);
+        open.get(name)!.push({ ref: inv.invoiceNo, dueDate: inv.dueDate, outstanding: out });
       }
     });
   return [...map.entries()].map(([name, txns]) => ({ name, txns, openItems: open.get(name) ?? [] }));
