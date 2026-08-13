@@ -9,6 +9,7 @@ import {
 import { parsePayableInvoicePdf, ParsedPayableInvoice } from '../services/invoicePdfParser';
 import { supabase } from '../services/supabaseClient';
 import { autoPostSupplierInvoice, autoPostSupplierPayment } from '../services/journalAutoPost';
+import StatementOfAccount, { StatementAccount, StatementTxn } from '../components/StatementOfAccount';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,7 +17,7 @@ type ApprovalStatus = 'Draft' | 'Pending' | 'Approved' | 'Rejected';
 type PaymentStatus  = 'Unpaid' | 'Partial' | 'Paid';
 type APStatus       = 'Not Due' | 'Due' | 'Overdue' | 'Partially Paid' | 'Paid' | 'On Hold';
 type InvoiceType    = 'توريدات' | 'خدمات' | 'أصول' | 'مصروفات تشغيل';
-type Screen         = 'dashboard' | 'invoice-list' | 'create-invoice' | 'invoice-details' | 'payment-entry' | 'history';
+type Screen         = 'dashboard' | 'invoice-list' | 'create-invoice' | 'invoice-details' | 'payment-entry' | 'history' | 'statement';
 type SortDir        = 'asc' | 'desc';
 
 interface SupplierPayment {
@@ -331,7 +332,36 @@ const TABS = [
   { id: 'invoice-list',  label: 'فواتير الموردين',   icon: 'receipt_long' },
   { id: 'payment-entry', label: 'تنفيذ الدفع',       icon: 'payments' },
   { id: 'history',       label: 'سجل المدفوعات',     icon: 'history' },
+  { id: 'statement',     label: 'كشف حساب',          icon: 'description' },
 ] as const;
+
+// Build per-supplier statement ledgers (all amounts normalised to EGP).
+const buildSupplierStatements = (invoices: PayableInvoice[]): StatementAccount[] => {
+  const toEgp = (inv: PayableInvoice, v: number) =>
+    inv.currency === 'USD' ? v * (inv.exchangeRate || 0) : v;
+  const map = new Map<string, StatementTxn[]>();
+  const push = (name: string, t: StatementTxn) => {
+    if (!map.has(name)) map.set(name, []);
+    map.get(name)!.push(t);
+  };
+  invoices
+    .filter(inv => inv.approvalStatus === 'Approved')
+    .forEach(inv => {
+      push(inv.supplier, {
+        date: inv.invoiceDate, ref: inv.invoiceNo, description: 'فاتورة مورد — Supplier invoice',
+        debit: toEgp(inv, inv.total), credit: 0,
+      });
+      (inv.payments ?? []).forEach(p => push(inv.supplier, {
+        date: p.paymentDate, ref: p.referenceNo || '—', description: `دفعة — Payment (${p.paymentMethod})`,
+        debit: 0, credit: p.amountPaidEgp ?? toEgp(inv, p.amountPaid),
+      }));
+      (inv.deductions ?? []).forEach(d => push(inv.supplier, {
+        date: d.date, ref: d.referenceNo || '—', description: `إشعار خصم — Deduction (${d.reason || ''})`.trim(),
+        debit: 0, credit: toEgp(inv, d.amount),
+      }));
+    });
+  return [...map.entries()].map(([name, txns]) => ({ name, txns }));
+};
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
@@ -2447,7 +2477,7 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
   const [projects, setProjects]       = useState<Project[]>([]);
   const [loading, setLoading]         = useState(true);
   const [screen, setScreen]           = useState<Screen>('dashboard');
-  const [activeTab, setActiveTab]     = useState<'dashboard' | 'invoice-list' | 'payment-entry' | 'history'>('dashboard');
+  const [activeTab, setActiveTab]     = useState<'dashboard' | 'invoice-list' | 'payment-entry' | 'history' | 'statement'>('dashboard');
   const [selectedInv, setSelectedInv] = useState<PayableInvoice | null>(null);
   const [editInv, setEditInv]         = useState<PayableInvoice | null>(null);
   const [payFor, setPayFor]           = useState<PayableInvoice | null>(null);
@@ -2641,7 +2671,7 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
       </div>
 
       {/* Tab Bar — hidden when inside sub-screens */}
-      {(screen === 'dashboard' || screen === 'invoice-list' || screen === 'payment-entry' || screen === 'history') && (
+      {(screen === 'dashboard' || screen === 'invoice-list' || screen === 'payment-entry' || screen === 'history' || screen === 'statement') && (
         <div className="flex gap-1 bg-[#232b3e] rounded-xl p-1.5 border border-gray-700 w-fit">
           {TABS.map(tab => (
             <button key={tab.id} onClick={() => handleTabChange(tab.id as typeof activeTab)}
@@ -2714,6 +2744,13 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
           canEdit={canDelete}
           onDeletePayment={handleDeletePayment}
           onEditPayment={handleEditPayment}
+        />
+      )}
+      {screen === 'statement' && (
+        <StatementOfAccount
+          kind="supplier"
+          accounts={buildSupplierStatements(invoices)}
+          onBack={() => { setScreen('dashboard'); setActiveTab('dashboard'); }}
         />
       )}
     </div>

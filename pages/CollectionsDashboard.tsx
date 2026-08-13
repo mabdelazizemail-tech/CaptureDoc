@@ -7,13 +7,14 @@ import { autoPostInvoiceIssuance, autoPostPaymentReceived, autoPostCreditNote } 
 import { ReceivableTodoService, ReceivableMonthlyTask } from '../services/receivableTodoStorage';
 import { PMStorageService, PMProject } from '../services/pmStorage';
 import { StorageService } from '../services/storage';
+import StatementOfAccount, { StatementAccount, StatementTxn } from '../components/StatementOfAccount';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type InvoiceStatus = 'Draft' | 'Approved' | 'Sent' | 'Cancelled';
 type CollectionStatus = 'Not Due' | 'Due' | 'Overdue' | 'Partially Paid' | 'Paid' | 'Disputed';
 type PaymentStatus = 'Unpaid' | 'Partial' | 'Paid';
-type Screen = 'dashboard' | 'invoice-list' | 'create-invoice' | 'invoice-details' | 'payment-entry' | 'history' | 'monthly-todo';
+type Screen = 'dashboard' | 'invoice-list' | 'create-invoice' | 'invoice-details' | 'payment-entry' | 'history' | 'monthly-todo' | 'statement';
 
 interface Payment {
   id: string;
@@ -306,7 +307,36 @@ const TABS = [
   { id: 'payment-entry', label: 'تسجيل السداد', icon: 'payments' },
   { id: 'history', label: 'سجل التحصيلات', icon: 'history' },
   { id: 'monthly-todo', label: 'قائمة المهام الشهرية', icon: 'assignment_turned_in' },
+  { id: 'statement', label: 'كشف حساب', icon: 'description' },
 ] as const;
+
+// Build per-customer statement ledgers (all amounts normalised to EGP).
+const buildCustomerStatements = (invoices: Invoice[]): StatementAccount[] => {
+  const toEgp = (inv: Invoice, v: number) =>
+    inv.currency === 'USD' ? v * (inv.exchangeRate || 0) : v;
+  const map = new Map<string, StatementTxn[]>();
+  const push = (name: string, t: StatementTxn) => {
+    if (!map.has(name)) map.set(name, []);
+    map.get(name)!.push(t);
+  };
+  invoices
+    .filter(inv => inv.invoiceStatus !== 'Draft' && inv.invoiceStatus !== 'Cancelled')
+    .forEach(inv => {
+      push(inv.customer, {
+        date: inv.invoiceDate, ref: inv.invoiceNo, description: 'فاتورة — Invoice',
+        debit: toEgp(inv, inv.total), credit: 0,
+      });
+      (inv.payments ?? []).forEach(p => push(inv.customer, {
+        date: p.receiptDate, ref: p.referenceNo || '—', description: `تحصيل — Payment received (${p.paymentMethod})`,
+        debit: 0, credit: p.amountReceivedEgp ?? toEgp(inv, p.amountReceived),
+      }));
+      (inv.creditNotes ?? []).forEach(c => push(inv.customer, {
+        date: c.date, ref: c.referenceNo || '—', description: `إشعار دائن — Credit note (${c.reason || ''})`.trim(),
+        debit: 0, credit: toEgp(inv, c.amount),
+      }));
+    });
+  return [...map.entries()].map(([name, txns]) => ({ name, txns }));
+};
 
 // ─── Screen: Dashboard ────────────────────────────────────────────────────────
 
@@ -4292,7 +4322,7 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
   }, []);
 
   const [screen, setScreen] = useState<Screen>('dashboard');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'invoice-list' | 'payment-entry' | 'history' | 'monthly-todo'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'invoice-list' | 'payment-entry' | 'history' | 'monthly-todo' | 'statement'>('dashboard');
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
@@ -4548,7 +4578,7 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
       </div>
 
       {/* Tab Bar — only show when not on detail / create screens */}
-      {(screen === 'dashboard' || screen === 'invoice-list' || screen === 'payment-entry' || screen === 'history' || screen === 'monthly-todo') && (
+      {(screen === 'dashboard' || screen === 'invoice-list' || screen === 'payment-entry' || screen === 'history' || screen === 'monthly-todo' || screen === 'statement') && (
         <div className="flex gap-1 bg-[#1b2130] p-1 rounded-xl w-fit">
           {TABS.map(tab => (
             <button
@@ -4624,6 +4654,13 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
       {screen === 'monthly-todo' && (
         <MonthlyTodoScreen
           user={user}
+        />
+      )}
+      {screen === 'statement' && (
+        <StatementOfAccount
+          kind="customer"
+          accounts={buildCustomerStatements(invoices)}
+          onBack={() => { setScreen('dashboard'); setActiveTab('dashboard'); }}
         />
       )}
     </div>
