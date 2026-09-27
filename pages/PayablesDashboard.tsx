@@ -5,6 +5,8 @@ import {
   loadPayables,
   upsertPayable,
   deletePayables,
+  loadPayablePdf,
+  prefetchPayablePdf,
 } from '../services/payablesStorage';
 import { parsePayableInvoicePdf, ParsedPayableInvoice } from '../services/invoicePdfParser';
 import { supabase } from '../services/supabaseClient';
@@ -68,6 +70,7 @@ interface PayableInvoice {
   approvedAt?: string;
   rejectionReason?: string;
   hasTax?: boolean;
+  hasPdf?: boolean;
   pdfData?: string;
   pdfName?: string;
 }
@@ -150,7 +153,7 @@ const apStatusColor: Record<APStatus, string> = {
   'Not Due':        'bg-gray-700 text-gray-300',
   'Due':            'bg-yellow-900/50 text-yellow-300',
   'Overdue':        'bg-red-900/50 text-red-400',
-  'Partially Paid': 'bg-orange-900/50 text-orange-300',
+  'Partially Paid': 'bg-green-900/50 text-green-400',
   'Paid':           'bg-green-900/50 text-green-400',
   'On Hold':        'bg-cyan-900/50 text-cyan-300',
 };
@@ -158,14 +161,14 @@ const apStatusAr: Record<APStatus, string> = {
   'Not Due':        'لم يحن موعده',
   'Due':            'مستحق السداد',
   'Overdue':        'متأخر السداد',
-  'Partially Paid': 'مدفوع جزئياً',
+  'Partially Paid': 'مدفوع',
   'Paid':           'مسدّد',
   'On Hold':        'موقوف',
 };
 
 const paymentStatusAr: Record<PaymentStatus, string> = {
   Unpaid:  'غير مدفوع',
-  Partial: 'جزئي',
+  Partial: 'مدفوع',
   Paid:    'مدفوع',
 };
 
@@ -754,13 +757,21 @@ const InvoiceListScreen: React.FC<{
                 return (
                   <tr key={inv.id}
                       className={`transition-colors cursor-pointer ${inv.approvalStatus === 'Pending' ? 'bg-red-900/20 hover:bg-red-900/30' : 'hover:bg-[#2d3648]'}`}
+                      onMouseEnter={() => prefetchPayablePdf(inv.id, inv.pdfName)}
                       onClick={() => onOpen(inv)}>
                     <td className="px-4 py-3" onClick={e => { e.stopPropagation(); if (aps !== 'Paid') toggle(inv.id); }}>
                       <input type="checkbox" checked={selected.has(inv.id)} onChange={() => {}}
                         disabled={aps === 'Paid'}
                         className="w-4 h-4 accent-primary disabled:opacity-30" />
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-white">{inv.invoiceNo}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-white">
+                      <div className="flex items-center gap-1.5">
+                        {(inv.hasPdf || inv.pdfName) && (
+                          <span className="material-icons text-orange-400 text-sm" title="مرفق ملف PDF">picture_as_pdf</span>
+                        )}
+                        <span>{inv.invoiceNo}</span>
+                      </div>
+                    </td>
                     <td className="px-4 py-3 font-medium text-white">{inv.supplier}</td>
                     <td className="px-4 py-3 text-xs text-gray-200">{inv.invoiceType}</td>
                     <td className="px-4 py-3 text-xs text-gray-200">{inv.invoiceDate}</td>
@@ -838,6 +849,17 @@ const CreateInvoiceScreen: React.FC<{
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(
     initial?.pdfData ? b64ToBlobUrl(initial.pdfData) : null
   );
+
+  useEffect(() => {
+    if (initial?.id && (initial.hasPdf || initial.pdfName) && !form.pdfData) {
+      loadPayablePdf(initial.id).then(pdf => {
+        if (pdf) {
+          setForm(prev => ({ ...prev, pdfData: pdf }));
+          setPdfPreviewUrl(b64ToBlobUrl(pdf));
+        }
+      });
+    }
+  }, [initial?.id]);
 
   // ETA import state
   interface EtaRow { uuid: string; internalId: string; issuerName: string; issuerId: string; dateTimeIssued: string; netAmount: number; total: number; status: string }
@@ -1866,6 +1888,29 @@ const InvoiceDetailsScreen: React.FC<{
   onSave: (inv: PayableInvoice) => void;
   canApprove: boolean;
 }> = ({ inv, onBack, onEdit, onPay, onSave, canApprove }) => {
+  const [pdfData, setPdfData] = useState<string | null>(inv.pdfData || null);
+  const [loadingPdf, setLoadingPdf] = useState<boolean>(!inv.pdfData && Boolean(inv.hasPdf || inv.pdfName));
+
+  useEffect(() => {
+    let active = true;
+    if (!inv.pdfData && (inv.hasPdf || inv.pdfName)) {
+      setLoadingPdf(true);
+      loadPayablePdf(inv.id).then(pdf => {
+        if (active) {
+          if (pdf) {
+            setPdfData(pdf);
+            inv.pdfData = pdf;
+          }
+          setLoadingPdf(false);
+        }
+      });
+    } else if (inv.pdfData) {
+      setPdfData(inv.pdfData);
+      setLoadingPdf(false);
+    }
+    return () => { active = false; };
+  }, [inv.id, inv.pdfData]);
+
   const aps   = effectiveAPStatus(inv);
   const bal   = balance(inv);
   const paid  = totalPaid(inv);
@@ -2003,19 +2048,30 @@ const InvoiceDetailsScreen: React.FC<{
       </div>
 
       {/* PDF Attachment Preview */}
-      {inv.pdfData && (
+      {(pdfData || inv.hasPdf || inv.pdfName) && (
         <div className="bg-[#232b3e] rounded-xl border border-gray-700 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-700 flex items-center gap-3">
             <span className="material-icons text-orange-400 text-base">picture_as_pdf</span>
             <h3 className="font-semibold text-white text-sm">نسخة الفاتورة</h3>
             {inv.pdfName && <span className="text-gray-500 text-xs mr-auto">{inv.pdfName}</span>}
           </div>
-          <iframe
-            src={b64ToBlobUrl(inv.pdfData!)}
-            title="نسخة الفاتورة"
-            className="w-full"
-            style={{ height: '600px', background: '#fff' }}
-          />
+          {pdfData ? (
+            <iframe
+              src={b64ToBlobUrl(pdfData)}
+              title="نسخة الفاتورة"
+              className="w-full"
+              style={{ height: '600px', background: '#fff' }}
+            />
+          ) : loadingPdf ? (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-3">
+              <span className="material-icons text-primary animate-spin text-3xl">refresh</span>
+              <span className="text-sm">جارٍ تحميل نسخة الفاتورة...</span>
+            </div>
+          ) : (
+            <div className="p-8 text-center text-gray-400 text-sm">
+              تعذر تحميل نسخة الفاتورة
+            </div>
+          )}
         </div>
       )}
 
@@ -2509,15 +2565,24 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
 
   // Load from Supabase
   useEffect(() => {
+    let mounted = true;
     (async () => {
-      const [remote, allProjects] = await Promise.all([
-        loadPayables(),
-        StorageService.getProjects(),
-      ]);
-      setInvoices(remote.length > 0 ? remote : []);
-      setProjects(allProjects);
-      setLoading(false);
+      try {
+        const [remote, allProjects] = await Promise.all([
+          loadPayables(),
+          StorageService.getProjects(),
+        ]);
+        if (mounted) {
+          setInvoices(remote.length > 0 ? remote : []);
+          setProjects(allProjects);
+        }
+      } catch (err) {
+        console.error('Failed to load payables data:', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
     })();
+    return () => { mounted = false; };
   }, []);
 
   // Writes only the changed invoices; `updated` is the full list for local state.
@@ -2734,7 +2799,7 @@ const PayablesDashboard: React.FC<{ user: User }> = ({ user }) => {
           onSave={handleSave}
           onCancel={() => setScreen(activeTab)}
           onRefresh={async () => {
-            const remote = await loadPayables();
+            const remote = await loadPayables(true);
             setInvoices(remote.length > 0 ? remote : []);
           }}
         />

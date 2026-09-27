@@ -215,7 +215,7 @@ const collectionStatusColor: Record<CollectionStatus, string> = {
   'Not Due': 'bg-gray-700 text-gray-300',
   Due: 'bg-yellow-900/50 text-yellow-300',
   Overdue: 'bg-red-900/50 text-red-400',
-  'Partially Paid': 'bg-orange-900/50 text-orange-300',
+  'Partially Paid': 'bg-green-900/50 text-green-400',
   Paid: 'bg-green-900/50 text-green-400',
   Disputed: 'bg-rose-900/50 text-rose-300',
 };
@@ -224,14 +224,14 @@ const collectionStatusAr: Record<CollectionStatus, string> = {
   'Not Due': 'لم يحن موعده',
   Due: 'مستحق',
   Overdue: 'متأخر',
-  'Partially Paid': 'مدفوع جزئياً',
+  'Partially Paid': 'مدفوع',
   Paid: 'مدفوع',
   Disputed: 'متنازع عليه',
 };
 
 const paymentStatusAr: Record<PaymentStatus, string> = {
   Unpaid: 'غير مدفوع',
-  Partial: 'جزئي',
+  Partial: 'مدفوع',
   Paid: 'مدفوع',
 };
 
@@ -364,6 +364,7 @@ const DashboardScreen: React.FC<{
 }> = ({ invoices, onOpen }) => {
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDirD, setSortDirD] = useState<SortDir>('asc');
+  const [statusCheckQuery, setStatusCheckQuery] = useState('');
 
   const handleSortD = (col: string) => {
     setSortDirD(prev => sortCol === col && prev === 'asc' ? 'desc' : 'asc');
@@ -380,6 +381,7 @@ const DashboardScreen: React.FC<{
       else if (sortCol === 'dueDate') v = cmp(a.dueDate, b.dueDate);
       else if (sortCol === 'invoiceDate') v = cmp(a.invoiceDate, b.invoiceDate);
       else if (sortCol === 'total') v = cmp(totalInEgp(a), totalInEgp(b));
+      else if (sortCol === 'collectionStatus') v = cmp(effectiveCollectionStatus(a), effectiveCollectionStatus(b));
       else if (sortCol === 'paymentDate') {
         const pa = a.payments.length > 0 ? a.payments.sort((x, y) => y.receiptDate.localeCompare(x.receiptDate))[0].receiptDate : '';
         const pb = b.payments.length > 0 ? b.payments.sort((x, y) => y.receiptDate.localeCompare(x.receiptDate))[0].receiptDate : '';
@@ -441,6 +443,42 @@ const DashboardScreen: React.FC<{
         ))}
       </div>
 
+      {/* Quick Status Check Widget */}
+      <div className="bg-[#232b3e] rounded-xl p-4 border border-gray-700">
+        <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
+          <span className="material-icons text-primary text-lg">search</span>
+          فحص حالة الفاتورة سريعاً
+        </h4>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            placeholder="أدخل رقم الفاتورة للتحقق من السداد..."
+            value={statusCheckQuery}
+            onChange={e => setStatusCheckQuery(e.target.value)}
+            className="flex-1 bg-[#1b2130] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary font-mono"
+          />
+        </div>
+        {statusCheckQuery.trim() && (
+          <div className="mt-3 p-3 rounded-lg bg-[#1b2130] border border-gray-700/50 flex items-center justify-between">
+            {(() => {
+              const found = invoices.find(i => i.invoiceNo.toLowerCase().includes(statusCheckQuery.trim().toLowerCase()));
+              if (!found) {
+                return <span className="text-gray-400 text-sm">الفاتورة غير مسجلة بالنظام</span>;
+              }
+              const isPaid = effectiveCollectionStatus(found) === 'Paid';
+              return (
+                <>
+                  <span className="text-white font-mono text-sm">{found.invoiceNo}</span>
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${isPaid ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}>
+                    {isPaid ? 'مدفوعة' : 'غير مدفوعة'}
+                  </span>
+                </>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+
       {/* All Invoices — coloured status icons */}
       <div className="bg-[#232b3e] rounded-xl border border-gray-700 overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-700 flex items-center gap-3 flex-wrap">
@@ -458,7 +496,7 @@ const DashboardScreen: React.FC<{
           <table className="w-full text-sm">
             <thead>
               <tr className="text-gray-500 text-xs border-b border-gray-700 bg-[#1b2130]">
-                <th className="px-4 py-3 text-right w-8"></th>
+                <SortTh label="" col="collectionStatus" sortCol={sortCol} sortDir={sortDirD} onSort={handleSortD} className="px-4 py-3 text-center w-8" />
                 <SortTh label="رقم الفاتورة" col="invoiceNo" sortCol={sortCol} sortDir={sortDirD} onSort={handleSortD} />
                 <SortTh label="العميل" col="customer" sortCol={sortCol} sortDir={sortDirD} onSort={handleSortD} />
                 <SortTh label="اسم المشروع" col="projectName" sortCol={sortCol} sortDir={sortDirD} onSort={handleSortD} />
@@ -472,7 +510,7 @@ const DashboardScreen: React.FC<{
             <tbody>
               {sortedInvoices.map(inv => {
                 const cs = effectiveCollectionStatus(inv);
-                const { dotIcon, dotCls, rowCls } = cs === 'Paid'
+                const { dotIcon, dotCls, rowCls } = cs === 'Paid' || cs === 'Partially Paid'
                   ? { dotIcon: 'check_circle', dotCls: 'text-green-400', rowCls: '' }
                   : { dotIcon: 'cancel', dotCls: 'text-red-500', rowCls: 'bg-red-950/10' };
                 return (
@@ -681,7 +719,7 @@ const InvoiceListScreen: React.FC<{
                   {(() => {
                     const s = effectiveCollectionStatus(inv);
                     const icon =
-                      s === 'Paid' ? { icon: 'check_circle', cls: 'text-green-400', label: collectionStatusAr[s] } :
+                      s === 'Paid' || s === 'Partially Paid' ? { icon: 'check_circle', cls: 'text-green-400', label: collectionStatusAr[s] } :
                       { icon: 'cancel', cls: 'text-red-500', label: collectionStatusAr[s] };
                     return (
                       <span className="flex items-center gap-1.5">

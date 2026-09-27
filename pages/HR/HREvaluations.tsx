@@ -163,7 +163,7 @@ const HREvaluations: React.FC<HREvaluationsProps> = ({ user, selectedProjectId }
     // ----- Project grouping -----
     const projectOf = (emp: Employee) => emp.project || NO_PROJECT;
 
-    const projectNames = [...new Set(employees.map(projectOf))].sort((a, b) => a.localeCompare(b, 'ar'));
+    const projectNames = [...new Set(employees.map(projectOf))].sort((a, b) => String(a).localeCompare(String(b), 'ar'));
 
     const visibleEmployees = projectFilter === 'all'
         ? employees

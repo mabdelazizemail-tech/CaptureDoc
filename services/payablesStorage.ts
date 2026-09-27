@@ -81,6 +81,7 @@ interface PayableInvoice {
   approvedAt?: string;
   rejectionReason?: string;
   hasTax?: boolean;
+  hasPdf?: boolean;
   pdfData?: string;
   pdfName?: string;
   etaSubmissionDate?: string;
@@ -206,32 +207,133 @@ function deductionToRow(dn: DeductionNote, invoiceId: string): Omit<PayableDeduc
   };
 }
 
-// ─── Schema detection (cached) ──────────────────────────────────────────────
+// ─── Schema detection & In-Memory Caches ────────────────────────────────────
 
-let schemaMode: 'relational' | 'jsonb' | null = null;
+let schemaMode: 'relational' | 'jsonb' | null = 'jsonb';
+const pdfCache = new Map<string, string>();
+let sessionPayablesCache: PayableInvoice[] | null = null;
 
 async function detectSchema(): Promise<'relational' | 'jsonb'> {
   if (schemaMode) return schemaMode;
-  const { error } = await supabase
-    .from('payables_invoices')
-    .select('*, payable_payments(*), payable_deductions(*)')
-    .limit(1);
-  schemaMode = error ? 'jsonb' : 'relational';
+  schemaMode = 'jsonb';
   return schemaMode;
 }
 
-// ─── Public API (same signatures as before) ─────────────────────────────────
+export function clearPayablesSessionCache(): void {
+  sessionPayablesCache = null;
+}
 
-export async function loadPayables(): Promise<PayableInvoice[]> {
+// ─── On-Demand PDF Fetch & Prefetch ──────────────────────────────────────────
+
+export async function loadPayablePdf(id: string): Promise<string | null> {
+  if (!id) return null;
+  if (pdfCache.has(id)) {
+    return pdfCache.get(id) || null;
+  }
+  try {
+    const { data, error } = await supabase
+      .from('payables_invoices')
+      .select('pdfData:data->pdfData')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error || !data?.pdfData) return null;
+    const pdf = data.pdfData as string;
+    pdfCache.set(id, pdf);
+    return pdf;
+  } catch (err) {
+    console.error('[payables] failed to fetch PDF for invoice:', id, err);
+    return null;
+  }
+}
+
+export function prefetchPayablePdf(id: string, pdfName?: string): void {
+  if (!id || !pdfName || pdfCache.has(id)) return;
+  loadPayablePdf(id).catch(() => {});
+}
+
+// ─── Public API ─────────────────────────────────────────────────────────────
+
+export async function loadPayables(forceRefresh = false): Promise<PayableInvoice[]> {
+  if (!forceRefresh && sessionPayablesCache && sessionPayablesCache.length > 0) {
+    return sessionPayablesCache;
+  }
+
   const mode = await detectSchema();
 
   if (mode === 'jsonb') {
+    // Lightweight select: loads table metadata without 13+ MB of base64 PDF blobs
+    const fields = [
+      'id',
+      'tax:data->tax',
+      'notes:data->notes',
+      'total:data->total',
+      'amount:data->amount',
+      'hasTax:data->hasTax',
+      'dueDate:data->dueDate',
+      'pdfName:data->pdfName',
+      'apStatus:data->apStatus',
+      'currency:data->currency',
+      'exchangeRate:data->exchangeRate',
+      'payments:data->payments',
+      'deductions:data->deductions',
+      'supplier:data->supplier',
+      'invoiceNo:data->invoiceNo',
+      'costCenter:data->costCenter',
+      'invoiceDate:data->invoiceDate',
+      'invoiceType:data->invoiceType',
+      'paymentStatus:data->paymentStatus',
+      'approvalStatus:data->approvalStatus',
+      'withholdingTax:data->withholdingTax',
+      'approvedAt:data->approvedAt',
+      'approvedBy:data->approvedBy',
+      'rejectionReason:data->rejectionReason',
+      'etaSubmissionDate:data->etaSubmissionDate',
+      'updated_at'
+    ].join(',');
+
     const { data, error } = await supabase
       .from('payables_invoices')
-      .select('data')
+      .select(fields)
       .order('updated_at', { ascending: false });
-    if (error) { console.error('[payables] load failed:', error); return []; }
-    return (data ?? []).map((r: { data: PayableInvoice }) => r.data);
+
+    if (error) {
+      console.error('[payables] load failed:', error);
+      return sessionPayablesCache ?? [];
+    }
+
+    const rows: PayableInvoice[] = (data ?? []).map((r: any) => ({
+      id: r.id,
+      invoiceNo: r.invoiceNo ?? '',
+      supplier: r.supplier ?? '',
+      costCenter: r.costCenter ?? undefined,
+      invoiceDate: r.invoiceDate ?? '',
+      dueDate: r.dueDate ?? '',
+      amount: Number(r.amount ?? 0),
+      tax: Number(r.tax ?? 0),
+      total: Number(r.total ?? 0),
+      invoiceType: r.invoiceType ?? '',
+      withholdingTax: r.withholdingTax !== undefined && r.withholdingTax !== null ? Number(r.withholdingTax) : undefined,
+      currency: (r.currency === 'USD' ? 'USD' : 'EGP'),
+      exchangeRate: r.exchangeRate ? Number(r.exchangeRate) : undefined,
+      approvalStatus: r.approvalStatus ?? 'Draft',
+      paymentStatus: r.paymentStatus ?? 'Unpaid',
+      apStatus: r.apStatus ?? 'Active',
+      approvedBy: r.approvedBy ?? undefined,
+      approvedAt: r.approvedAt ?? undefined,
+      rejectionReason: r.rejectionReason ?? undefined,
+      hasTax: r.hasTax ?? false,
+      notes: r.notes ?? '',
+      pdfName: r.pdfName ?? undefined,
+      pdfData: pdfCache.get(r.id), // attach if already preloaded
+      hasPdf: Boolean(r.pdfName),
+      etaSubmissionDate: r.etaSubmissionDate ?? undefined,
+      payments: Array.isArray(r.payments) ? r.payments : [],
+      deductions: Array.isArray(r.deductions) ? r.deductions : [],
+    }));
+
+    sessionPayablesCache = rows;
+    return rows;
   }
 
   const { data, error } = await supabase
@@ -240,19 +342,58 @@ export async function loadPayables(): Promise<PayableInvoice[]> {
     .order('updated_at', { ascending: false });
   if (error) {
     console.error('[payables] load failed:', error);
-    return [];
+    return sessionPayablesCache ?? [];
   }
-  return ((data ?? []) as PayableInvoiceRow[]).map(invoiceFromRow);
+  const result = ((data ?? []) as PayableInvoiceRow[]).map(invoiceFromRow);
+  sessionPayablesCache = result;
+  return result;
 }
 
 export async function upsertPayable(invoice: PayableInvoice): Promise<boolean> {
   const mode = await detectSchema();
 
+  if (invoice.pdfData) {
+    pdfCache.set(invoice.id, invoice.pdfData);
+  }
+
   if (mode === 'jsonb') {
+    let dataToSave = { ...invoice };
+    // Preserve existing pdfData in DB if this invoice was loaded in lightweight mode without re-uploading
+    if (invoice.pdfData === undefined) {
+      if (pdfCache.has(invoice.id)) {
+        dataToSave.pdfData = pdfCache.get(invoice.id);
+      } else {
+        const { data: existing } = await supabase
+          .from('payables_invoices')
+          .select('pdfData:data->pdfData')
+          .eq('id', invoice.id)
+          .maybeSingle();
+        if (existing?.pdfData) {
+          const existingPdf = existing.pdfData as string;
+          dataToSave.pdfData = existingPdf;
+          pdfCache.set(invoice.id, existingPdf);
+        }
+      }
+    }
+
     const { error } = await supabase
       .from('payables_invoices')
-      .upsert({ id: invoice.id, data: invoice, updated_at: new Date().toISOString() });
-    if (error) { console.error('[payables] upsert failed:', error); return false; }
+      .upsert({ id: invoice.id, data: dataToSave, updated_at: new Date().toISOString() });
+    if (error) {
+      console.error('[payables] upsert failed:', error);
+      return false;
+    }
+
+    // Update in-memory session cache
+    if (sessionPayablesCache) {
+      const idx = sessionPayablesCache.findIndex(i => i.id === invoice.id);
+      const updatedInv = { ...invoice, hasPdf: Boolean(invoice.pdfName || dataToSave.pdfData) };
+      if (idx >= 0) {
+        sessionPayablesCache[idx] = updatedInv;
+      } else {
+        sessionPayablesCache.unshift(updatedInv);
+      }
+    }
     return true;
   }
 
@@ -284,6 +425,10 @@ export async function upsertPayable(invoice: PayableInvoice): Promise<boolean> {
 
 export async function deletePayables(ids: string[]): Promise<void> {
   if (!ids.length) return;
+  ids.forEach(id => pdfCache.delete(id));
+  if (sessionPayablesCache) {
+    sessionPayablesCache = sessionPayablesCache.filter(i => !ids.includes(i.id));
+  }
   const { error } = await supabase.from('payables_invoices').delete().in('id', ids);
   if (error) console.error('[payables] delete failed:', error);
 }
