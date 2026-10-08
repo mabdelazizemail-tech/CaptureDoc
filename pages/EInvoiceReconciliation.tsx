@@ -51,6 +51,16 @@ interface ReconRow {
     creditNotes?: string; // ETA credit note numbers that reverse this invoice
 }
 
+const RECON_STATUS_AR: Record<string, string> = {
+    'Matched': 'مطابق',
+    'Missing from E-Invoice': 'مفقود في ETA',
+    'Missing from Internal System': 'مفقود في النظام الداخلي',
+    'Amount Mismatch': 'فرق في القيمة',
+    'Duplicate Invoice': 'فاتورة مكررة',
+    'Cancelled by Credit Note': 'ملغاة بإشعار دائن',
+};
+const reconStatusAr = (status: string) => RECON_STATUS_AR[status] ?? status;
+
 export const EInvoiceReconciliation: React.FC<{ user: User }> = ({ user }) => {
     // API Credentials
     const [etaClientId, setEtaClientId] = useState(localStorage.getItem('eta_client_id') ?? '');
@@ -430,7 +440,7 @@ export const EInvoiceReconciliation: React.FC<{ user: User }> = ({ user }) => {
             'ETA Amount': r.etaAmount,
             'Variance': r.variance,
             'ETA Status': r.submissionStatus,
-            'Recon Status': r.reconciliationStatus,
+            'Recon Status': reconStatusAr(r.reconciliationStatus),
             'Credit Notes': r.creditNotes || '',
             'Collection Status': r.collectionStatus
         }));
@@ -547,6 +557,7 @@ export const EInvoiceReconciliation: React.FC<{ user: User }> = ({ user }) => {
                         <option value="Missing from E-Invoice">مفقود في ETA</option>
                         <option value="Missing from Internal System">مفقود في النظام الداخلي</option>
                         <option value="Amount Mismatch">فرق في القيمة</option>
+                        <option value="Duplicate Invoice">فاتورة مكررة</option>
                         <option value="Cancelled by Credit Note">ملغاة بإشعار دائن</option>
                     </select>
                 </div>
@@ -612,7 +623,7 @@ export const EInvoiceReconciliation: React.FC<{ user: User }> = ({ user }) => {
                                     </td>
                                     <td className="p-3">
                                         <span className={`px-2 py-1 rounded text-xs font-bold ${statusColor(r.reconciliationStatus)}`}>
-                                            {r.reconciliationStatus}
+                                            {reconStatusAr(r.reconciliationStatus)}
                                         </span>
                                         {r.creditNotes && <div className="text-[10px] text-gray-500 mt-1">إشعار دائن: {r.creditNotes}</div>}
                                     </td>
