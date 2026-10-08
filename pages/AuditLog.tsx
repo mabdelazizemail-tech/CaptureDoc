@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { User } from '../services/types';
+import { EInvoiceReconciliation } from './EInvoiceReconciliation';
 
 interface AuditEntry {
     id: number;
@@ -96,6 +97,7 @@ const AuditLog: React.FC<AuditLogProps> = ({ user }) => {
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(0);
     const [expandedId, setExpandedId] = useState<number | null>(null);
+    const [activeTab, setActiveTab] = useState<'db-audit' | 'einvoice-recon'>('db-audit');
 
     // Filters
     const [tableFilter, setTableFilter] = useState('all');
@@ -106,8 +108,8 @@ const AuditLog: React.FC<AuditLogProps> = ({ user }) => {
     const [dateTo, setDateTo] = useState('');
 
     useEffect(() => {
-        fetchLogs();
-    }, [page, tableFilter, opFilter, search, dateFrom, dateTo]);
+        if (activeTab === 'db-audit') fetchLogs();
+    }, [page, tableFilter, opFilter, search, dateFrom, dateTo, activeTab]);
 
     const fetchLogs = async () => {
         setLoading(true);
@@ -202,14 +204,36 @@ const AuditLog: React.FC<AuditLogProps> = ({ user }) => {
 
     return (
         <div className="space-y-6 animate-fade-in">
-            {/* Header + filters */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 space-y-3">
-                <div className="flex items-center justify-between flex-wrap gap-3">
-                    <h2 className="font-bold text-gray-800 flex items-center gap-2">
-                        <span className="material-icons text-primary">history_edu</span>
-                        سجل العمليات
-                        <span className="bg-gray-100 text-gray-500 text-xs font-bold px-2 py-0.5 rounded-full">{totalCount.toLocaleString('en-US')}</span>
-                    </h2>
+            {/* Tabs */}
+            <div className="flex gap-4 border-b border-gray-200">
+                <button 
+                    onClick={() => setActiveTab('db-audit')} 
+                    className={`pb-2 px-1 text-sm font-bold border-b-2 transition-colors ${activeTab === 'db-audit' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                >
+                    <span className="material-icons align-middle text-sm mr-1">history_edu</span>
+                    سجل عمليات النظام
+                </button>
+                <button 
+                    onClick={() => setActiveTab('einvoice-recon')} 
+                    className={`pb-2 px-1 text-sm font-bold border-b-2 transition-colors ${activeTab === 'einvoice-recon' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                >
+                    <span className="material-icons align-middle text-sm mr-1">receipt_long</span>
+                    مراجعة الفواتير الإلكترونية
+                </button>
+            </div>
+
+            {activeTab === 'einvoice-recon' ? (
+                <EInvoiceReconciliation user={user} />
+            ) : (
+                <>
+                {/* Header + filters */}
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                        <h2 className="font-bold text-gray-800 flex items-center gap-2">
+                            <span className="material-icons text-primary">history_edu</span>
+                            سجل العمليات
+                            <span className="bg-gray-100 text-gray-500 text-xs font-bold px-2 py-0.5 rounded-full">{totalCount.toLocaleString('en-US')}</span>
+                        </h2>
                     <button onClick={() => fetchLogs()} className="flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-primary transition-colors">
                         <span className="material-icons text-[16px]">refresh</span>
                         تحديث
@@ -362,6 +386,8 @@ const AuditLog: React.FC<AuditLogProps> = ({ user }) => {
                     </div>
                 )}
             </div>
+            </>
+            )}
         </div>
     );
 };

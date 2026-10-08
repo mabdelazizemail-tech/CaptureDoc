@@ -9,13 +9,14 @@ import { PMStorageService, PMProject } from '../services/pmStorage';
 import { StorageService } from '../services/storage';
 import StatementOfAccount, { StatementAccount, StatementTxn, StatementOpenItem } from '../components/StatementOfAccount';
 import { accountKey, canonicalAccountName } from '../services/accountNames';
+import { EInvoiceReconciliation } from './EInvoiceReconciliation';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type InvoiceStatus = 'Draft' | 'Approved' | 'Sent' | 'Cancelled';
 type CollectionStatus = 'Not Due' | 'Due' | 'Overdue' | 'Partially Paid' | 'Paid' | 'Disputed';
 type PaymentStatus = 'Unpaid' | 'Partial' | 'Paid';
-type Screen = 'dashboard' | 'invoice-list' | 'create-invoice' | 'invoice-details' | 'payment-entry' | 'history' | 'monthly-todo' | 'statement';
+type Screen = 'dashboard' | 'invoice-list' | 'create-invoice' | 'invoice-details' | 'payment-entry' | 'history' | 'monthly-todo' | 'statement' | 'einvoice-recon';
 
 interface Payment {
   id: string;
@@ -58,6 +59,7 @@ interface Invoice {
   payments: Payment[];
   pdfData?: string;
   pdfName?: string;
+  etaUuid?: string; // ETA e-invoice UUID, used to fetch the official PDF
   currency?: 'EGP' | 'USD';
   exchangeRate?: number;
   invoiceType?: 'توريدات' | 'خدمات';
@@ -309,6 +311,7 @@ const TABS = [
   { id: 'history', label: 'سجل التحصيلات', icon: 'history' },
   { id: 'monthly-todo', label: 'قائمة المهام الشهرية', icon: 'assignment_turned_in' },
   { id: 'statement', label: 'كشف حساب', icon: 'description' },
+  { id: 'einvoice-recon', label: 'مراجعة الفواتير الإلكترونية', icon: 'fact_check' },
 ] as const;
 
 // Build per-customer statement ledgers (all amounts normalised to EGP).
@@ -802,6 +805,7 @@ const CreateInvoiceScreen: React.FC<{
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [parsing, setParsing] = useState(false);
   const [uploadedName, setUploadedName] = useState(editing?.pdfName || '');
+  const [etaUuid, setEtaUuid] = useState(editing?.etaUuid || '');
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState(editing?.pdfData || '');
   const [pdfData, setPdfData] = useState<string>(editing?.pdfData || '');
   const [pdfName, setPdfName] = useState<string>(editing?.pdfName || '');
@@ -1161,6 +1165,7 @@ const CreateInvoiceScreen: React.FC<{
       }
 
       const add30 = (iso: string) => { const d = new Date(iso); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); };
+      setEtaUuid(row.uuid);
       setForm(f => {
         const amt = inv?.amount > 0 ? inv.amount : row.netAmount > 0 ? row.netAmount : f.amount;
         const tax = inv?.tax > 0 ? inv.tax : Math.round(amt * 0.14 * 100) / 100;
@@ -1184,6 +1189,7 @@ const CreateInvoiceScreen: React.FC<{
         alert(`فشل الاستيراد المباشر: ${e.message || 'تعذر جلب بيانات الفاتورة من بوابة ETA'}`);
       } else {
         const add30 = (iso: string) => { const d = new Date(iso); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); };
+        setEtaUuid(row.uuid);
         setForm(f => {
           const amt = row.netAmount || f.amount;
           const tax = Math.round(amt * 0.14 * 100) / 100;
@@ -1389,6 +1395,7 @@ const CreateInvoiceScreen: React.FC<{
       invoiceNotes: form.invoiceNotes || '',
       pdfData: pdfData || undefined,
       pdfName: pdfName || undefined,
+      etaUuid: etaUuid || undefined,
     });
   };
 
@@ -2182,6 +2189,87 @@ const PaymentHistoryTable: React.FC<{
   );
 };
 
+// ─── ETA PDF helpers (invoice details) ────────────────────────────────────────
+
+interface EtaCreds { clientId: string; secret: string; secret2: string }
+
+const loadEtaCreds = async (username: string): Promise<EtaCreds | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('operator_settings')
+      .select('key, value')
+      .eq('operator_id', username)
+      .in('key', ['eta_client_id', 'eta_client_sec', 'eta_client_sec2']);
+    if (!error && data && data.length > 0) {
+      const map: Record<string, string> = Object.fromEntries(data.map((r: { key: string; value: string }) => [r.key, r.value]));
+      if (map.eta_client_id && map.eta_client_sec) return { clientId: map.eta_client_id, secret: map.eta_client_sec, secret2: map.eta_client_sec2 ?? '' };
+    }
+  } catch { /* fall through to localStorage */ }
+  const clientId = localStorage.getItem('eta_client_id') ?? '';
+  const secret = localStorage.getItem('eta_client_sec') ?? '';
+  return clientId && secret ? { clientId, secret, secret2: localStorage.getItem('eta_client_sec2') ?? '' } : null;
+};
+
+const etaRequest = async (creds: EtaCreds, body: object): Promise<any> => {
+  const call = (secret: string) => fetch('/api/eta-document', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, clientId: creds.clientId, clientSecret: secret }),
+  }).then(r => r.json().catch(() => ({ ok: false, error: `HTTP ${r.status}` })));
+  const data = await call(creds.secret);
+  if (!data.ok && creds.secret2 && (data.error ?? '').toLowerCase().includes('auth')) return call(creds.secret2);
+  return data;
+};
+
+// "05/26", "5-26", "5/2026" all normalise to "5/26"
+const normalizeEtaInvoiceNo = (s: string) =>
+  (s || '').replace(/\s+/g, '').replace(/[-_\\]/g, '/').replace(/^0+/, '').replace(/\/20(\d{2})$/, '/$1').toLowerCase();
+
+// Finds the ETA UUID for an invoice by searching sent documents around its date.
+const findEtaUuid = async (creds: EtaCreds, invoice: Invoice): Promise<string | null> => {
+  const shift = (iso: string, days: number) => { const d = new Date(iso); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
+  const today = new Date().toISOString().slice(0, 10);
+  const to = shift(invoice.invoiceDate, 10);
+  const body: any = {
+    action: 'list-sent',
+    issueDateFrom: shift(invoice.invoiceDate, -10) + 'T00:00:00',
+    issueDateTo: (to > today ? today : to) + 'T23:59:59',
+  };
+  const target = normalizeEtaInvoiceNo(invoice.invoiceNo);
+  const matches: { uuid: string; total: number; dateTimeIssued: string }[] = [];
+  let continuationToken = '';
+  for (let page = 0; page < 4; page++) {
+    const data = await etaRequest(creds, continuationToken ? { ...body, continuationToken } : body);
+    if (!data.ok) throw new Error(data.error || 'تعذر البحث في منظومة الفاتورة الإلكترونية');
+    for (const row of data.invoices ?? []) {
+      if (normalizeEtaInvoiceNo(row.internalId) === target) matches.push(row);
+    }
+    continuationToken = data.continuationToken ?? '';
+    if (!continuationToken) break;
+  }
+  if (matches.length === 0) return null;
+  // Several valid documents with the same number: prefer the closest total
+  matches.sort((a, b) => Math.abs(a.total - invoice.total) - Math.abs(b.total - invoice.total));
+  return matches[0].uuid;
+};
+
+const fetchEtaPdfBlob = async (creds: EtaCreds, uuid: string): Promise<Blob> => {
+  let lastError = '';
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const data = await etaRequest(creds, { action: 'pdf', uuid });
+    if (data.ok && data.pdf) {
+      const bytes = atob(data.pdf);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      return new Blob([arr], { type: 'application/pdf' });
+    }
+    lastError = data.error || 'ETA returned an empty PDF';
+    if (/auth failed|\(40[0134]\)/i.test(lastError)) break;
+    if (attempt < 3) await new Promise(r => setTimeout(r, 2000 * attempt));
+  }
+  throw new Error(lastError);
+};
+
 // ─── Screen: Invoice Details ──────────────────────────────────────────────────
 
 const InvoiceDetailsScreen: React.FC<{
@@ -2195,8 +2283,55 @@ const InvoiceDetailsScreen: React.FC<{
   onSaveCurrency?: (patch: Pick<Invoice, 'currency' | 'exchangeRate' | 'amount' | 'tax' | 'total' | 'withholdingTax'>) => void;
   onUpdatePayment?: (paymentId: string, patch: Partial<Payment>) => void;
   onDeletePayment?: (paymentId: string) => void;
-}> = ({ invoice, onEdit, onAddPayment, onUpdateCollection, onAddCreditNote, onBack, canEdit, onSaveCurrency, onUpdatePayment, onDeletePayment }) => {
+  user: User;
+  onLinkEtaUuid?: (uuid: string) => void;
+}> = ({ invoice, onEdit, onAddPayment, onUpdateCollection, onAddCreditNote, onBack, canEdit, onSaveCurrency, onUpdatePayment, onDeletePayment, user, onLinkEtaUuid }) => {
   const [detailTab, setDetailTab] = useState<'details' | 'credit-notes'>('details');
+
+  // ETA PDF: shown when no PDF was uploaded with the invoice
+  const [etaPdf, setEtaPdf] = useState<{ status: 'idle' | 'loading' | 'ready' | 'not-found' | 'error' | 'no-creds'; url?: string; error?: string }>({ status: 'idle' });
+  const [manualUuid, setManualUuid] = useState('');
+  const etaPdfUrlRef = useRef('');
+
+  const loadEtaPdf = async (uuidOverride?: string) => {
+    setEtaPdf({ status: 'loading' });
+    try {
+      const creds = await loadEtaCreds(user.username);
+      if (!creds) { setEtaPdf({ status: 'no-creds' }); return; }
+      let uuid = uuidOverride || invoice.etaUuid || '';
+      if (!uuid) {
+        uuid = (await findEtaUuid(creds, invoice)) || '';
+        if (!uuid) { setEtaPdf({ status: 'not-found' }); return; }
+        onLinkEtaUuid?.(uuid);
+      }
+      const blob = await fetchEtaPdfBlob(creds, uuid);
+      if (etaPdfUrlRef.current) URL.revokeObjectURL(etaPdfUrlRef.current);
+      etaPdfUrlRef.current = URL.createObjectURL(blob);
+      setEtaPdf({ status: 'ready', url: etaPdfUrlRef.current });
+    } catch (e: any) {
+      setEtaPdf({ status: 'error', error: e?.message || String(e) });
+    }
+  };
+
+  useEffect(() => {
+    if (!invoice.pdfData) loadEtaPdf();
+    else setEtaPdf({ status: 'idle' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoice.id, invoice.pdfData]);
+
+  useEffect(() => () => { if (etaPdfUrlRef.current) URL.revokeObjectURL(etaPdfUrlRef.current); }, []);
+
+  const linkManualUuid = () => {
+    const match = manualUuid.match(/([A-Z0-9]{26})/i);
+    if (!match) { alert('الرجاء إدخال معرف صحيح يتكون من 26 حرفاً ورقماً، أو رابط الفاتورة الكامل من البوابة.'); return; }
+    const uuid = match[1].toUpperCase();
+    onLinkEtaUuid?.(uuid);
+    setManualUuid('');
+    loadEtaPdf(uuid);
+  };
+
+  const viewPdfUrl = invoice.pdfData || (etaPdf.status === 'ready' ? etaPdf.url : '');
+  const showPdfColumn = !!invoice.pdfData || etaPdf.status !== 'idle';
   const [followUp, setFollowUp] = useState({
     collectionStatus: invoice.collectionStatus,
     lastFollowUp: invoice.lastFollowUp,
@@ -2258,312 +2393,389 @@ const InvoiceDetailsScreen: React.FC<{
   const remaining = balanceInEgp(invoice);
 
   return (
-    <div className="space-y-5 max-w-3xl">
-      {/* Back + Actions */}
-      <div className="flex items-center gap-3">
-        <button onClick={onBack} className="flex items-center gap-1 text-gray-500 hover:text-gray-900 text-sm transition-colors">
-          <span className="material-icons text-base">arrow_forward</span>
-          رجوع
-        </button>
-        <span className="text-gray-600">|</span>
-        <span className="text-gray-300 font-mono text-sm">{invoice.invoiceNo}</span>
-        <div className="mr-auto flex gap-2">
-          {invoice.pdfData && (
-            <a href={invoice.pdfData} target="_blank" rel="noopener noreferrer" download={invoice.pdfName || `${invoice.invoiceNo}.pdf`}
-              className="flex items-center gap-1 bg-[#2d3648] hover:bg-[#3a4458] text-gray-300 px-3 py-2 rounded-lg text-sm transition-colors">
-              <span className="material-icons text-sm">picture_as_pdf</span>
-              عرض PDF
-            </a>
-          )}
-          <button onClick={onEdit} className="flex items-center gap-1 bg-[#2d3648] hover:bg-[#3a4458] text-gray-300 px-3 py-2 rounded-lg text-sm transition-colors">
-            <span className="material-icons text-sm">edit</span>
-            تعديل
+    <div className={`grid gap-5 ${showPdfColumn ? 'lg:grid-cols-2' : 'max-w-3xl'}`}>
+      <div className="order-1 lg:order-1 space-y-5">
+        {/* Back + Actions */}
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="flex items-center gap-1 text-gray-500 hover:text-gray-900 text-sm transition-colors">
+            <span className="material-icons text-base">arrow_forward</span>
+            رجوع
           </button>
-          {invoice.paymentStatus !== 'Paid' && (
-            <button onClick={onAddPayment} className="flex items-center gap-1 bg-green-800 hover:bg-green-700 text-green-200 px-3 py-2 rounded-lg text-sm transition-colors">
-              <span className="material-icons text-sm">add</span>
-              تسجيل دفعة
+          <span className="text-gray-600">|</span>
+          <span className="text-gray-300 font-mono text-sm">{invoice.invoiceNo}</span>
+          <div className="mr-auto flex gap-2">
+            {viewPdfUrl && (
+              <a href={viewPdfUrl} target="_blank" rel="noopener noreferrer" download={invoice.pdfData ? (invoice.pdfName || `${invoice.invoiceNo}.pdf`) : `ETA_${invoice.invoiceNo.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`}
+                className="flex items-center gap-1 bg-[#2d3648] hover:bg-[#3a4458] text-gray-300 px-3 py-2 rounded-lg text-sm transition-colors">
+                <span className="material-icons text-sm">picture_as_pdf</span>
+                عرض PDF
+              </a>
+            )}
+            <button onClick={onEdit} className="flex items-center gap-1 bg-[#2d3648] hover:bg-[#3a4458] text-gray-300 px-3 py-2 rounded-lg text-sm transition-colors">
+              <span className="material-icons text-sm">edit</span>
+              تعديل
             </button>
-          )}
-        </div>
-      </div>
-
-      {/* Invoice Header */}
-      <div className="bg-[#232b3e] rounded-xl border border-gray-700 p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
-        <InfoCell label="العميل" value={invoice.customer} />
-        <InfoCell label="اسم المشروع" value={invoice.projectName || '—'} />
-        <InfoCell label="تاريخ الفاتورة" value={invoice.invoiceDate} />
-        <InfoCell label="تاريخ الاستحقاق" value={invoice.dueDate} />
-        <InfoCell label="حالة الفاتورة">
-          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${invoiceStatusColor[invoice.invoiceStatus]}`}>
-            {invoiceStatusAr[invoice.invoiceStatus]}
-          </span>
-        </InfoCell>
-        {invoice.invoiceType && <InfoCell label="نوع الفاتورة" value={invoice.invoiceType} />}
-      </div>
-
-      {/* Financials */}
-      <div className="bg-[#232b3e] rounded-xl border border-gray-700 p-5 space-y-3">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <InfoCell label="العملة" value={invoice.currency === 'USD' ? `USD @ ${invoice.exchangeRate}` : 'EGP'} />
-          <InfoCell label="الإجمالي الأصلي" value={`${fmt(invoice.total)} ${invoice.currency || 'EGP'}`} valueClass="text-white font-bold text-lg" />
-          <InfoCell label="الإجمالي بالجنيه" value={`${fmt(totalEgp)} EGP`} valueClass="text-white font-bold text-lg" />
-          {creditTotal > 0 && <InfoCell label="إشعارات دائنة" value={`- ${fmt(creditTotal)} EGP`} valueClass="text-orange-400 font-bold text-lg" />}
-          <InfoCell label={creditTotal > 0 ? 'الصافي بعد الإشعار' : 'الإجمالي'} value={`${fmt(effTotal)} EGP`} valueClass="text-blue-300 font-bold text-lg" />
-          <InfoCell label="المحصّل" value={`${fmt(paid)} EGP`} valueClass="text-green-400 font-bold text-lg" />
-          <InfoCell label="الرصيد المتبقي" value={`${fmt(remaining)} EGP`} valueClass={remaining > 0 ? 'text-red-400 font-bold text-lg' : 'text-green-400 font-bold text-lg'} />
-        </div>
-
-        {/* Admin: currency quick-edit */}
-        {canEdit && onSaveCurrency && (
-          <div className="border-t border-gray-700 pt-3">
-            {!showCurrencyEdit ? (
-              <button
-                onClick={() => setShowCurrencyEdit(true)}
-                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-yellow-300 transition-colors"
-              >
-                <span className="material-icons text-sm">currency_exchange</span>
-                تعديل العملة وسعر الصرف
+            {invoice.paymentStatus !== 'Paid' && (
+              <button onClick={onAddPayment} className="flex items-center gap-1 bg-green-800 hover:bg-green-700 text-green-200 px-3 py-2 rounded-lg text-sm transition-colors">
+                <span className="material-icons text-sm">add</span>
+                تسجيل دفعة
               </button>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-xs font-semibold text-yellow-400 flex items-center gap-1">
-                  <span className="material-icons text-sm">currency_exchange</span>
-                  تعديل العملة وسعر الصرف
-                </p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <Field label="العملة" required>
-                    <select
-                      value={currencyEdit.currency}
-                      onChange={e => setCurrencyEdit(f => ({ ...f, currency: e.target.value, exchangeRate: 0 }))}
-                      className={inputCls}
-                    >
-                      <option value="EGP">EGP — جنيه مصري</option>
-                      <option value="USD">USD — دولار أمريكي</option>
-                    </select>
-                  </Field>
-                  {currencyEdit.currency === 'USD' && (
-                    <Field label="سعر الصرف (EGP / USD)" required>
-                      <input
-                        type="number" step="any" min={0}
-                        value={currencyEdit.exchangeRate}
-                        onChange={e => setCurrencyEdit(f => ({ ...f, exchangeRate: Number(e.target.value) }))}
-                        className={inputCls} placeholder="مثال: 50.5"
-                      />
-                    </Field>
-                  )}
-                  <Field label={`المبلغ قبل الضريبة (${currencyEdit.currency})`}>
-                    <input
-                      type="number" step="any" min={0}
-                      value={currencyEdit.amount}
-                      onChange={e => setCurrencyEdit(f => ({ ...f, amount: Number(e.target.value) }))}
-                      className={inputCls}
-                    />
-                  </Field>
-                  <Field label={`الضريبة (${currencyEdit.currency})`}>
-                    <input
-                      type="number" step="any" min={0}
-                      value={currencyEdit.tax}
-                      onChange={e => setCurrencyEdit(f => ({ ...f, tax: Number(e.target.value) }))}
-                      className={inputCls}
-                    />
-                  </Field>
-                </div>
-                {/* Preview */}
-                <div className="bg-[#1b2130] rounded-lg px-4 py-3 grid grid-cols-3 gap-3 text-sm">
-                  <div>
-                    <p className="text-gray-500 text-xs">الإجمالي</p>
-                    <p className="text-white font-bold">{fmt(ceTotal)} {currencyEdit.currency}</p>
-                    {currencyEdit.currency === 'USD' && Number(currencyEdit.exchangeRate) > 0 && (
-                      <p className="text-gray-400 text-xs">≈ {fmt(ceTotal * Number(currencyEdit.exchangeRate))} EGP</p>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-gray-500 text-xs">خصم ض.ت.ح ({invoice.invoiceType === 'خدمات' ? '3%' : '1%'})</p>
-                    <p className="text-yellow-300 font-semibold">- {fmt(ceWithholding)} {currencyEdit.currency}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 text-xs">الصافي</p>
-                    <p className="text-green-400 font-bold">{fmt(ceTotal - ceWithholding)} {currencyEdit.currency}</p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleCurrencySave}
-                    className="flex items-center gap-1.5 bg-yellow-700 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm transition-colors"
-                  >
-                    <span className="material-icons text-sm">{currencySaved ? 'check' : 'save'}</span>
-                    {currencySaved ? 'تم الحفظ' : 'حفظ التعديل'}
-                  </button>
-                  <button
-                    onClick={() => { setShowCurrencyEdit(false); setCurrencyEdit({ currency: invoice.currency || 'EGP', exchangeRate: invoice.exchangeRate || 0, amount: invoice.amount, tax: invoice.tax }); }}
-                    className="px-4 py-2 bg-[#1b2130] hover:bg-[#2d3648] text-gray-400 rounded-lg text-sm transition-colors"
-                  >
-                    إلغاء
-                  </button>
-                </div>
-              </div>
             )}
           </div>
+        </div>
+
+        {/* Invoice Header */}
+        <div className="bg-[#232b3e] rounded-xl border border-gray-700 p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+          <InfoCell label="العميل" value={invoice.customer} />
+          <InfoCell label="اسم المشروع" value={invoice.projectName || '—'} />
+          <InfoCell label="تاريخ الفاتورة" value={invoice.invoiceDate} />
+          <InfoCell label="تاريخ الاستحقاق" value={invoice.dueDate} />
+          <InfoCell label="حالة الفاتورة">
+            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${invoiceStatusColor[invoice.invoiceStatus]}`}>
+              {invoiceStatusAr[invoice.invoiceStatus]}
+            </span>
+          </InfoCell>
+          {invoice.invoiceType && <InfoCell label="نوع الفاتورة" value={invoice.invoiceType} />}
+        </div>
+
+        {/* Financials */}
+        <div className="bg-[#232b3e] rounded-xl border border-gray-700 p-5 space-y-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <InfoCell label="العملة" value={invoice.currency === 'USD' ? `USD @ ${invoice.exchangeRate}` : 'EGP'} />
+            <InfoCell label="الإجمالي الأصلي" value={`${fmt(invoice.total)} ${invoice.currency || 'EGP'}`} valueClass="text-white font-bold text-lg" />
+            <InfoCell label="الإجمالي بالجنيه" value={`${fmt(totalEgp)} EGP`} valueClass="text-white font-bold text-lg" />
+            {creditTotal > 0 && <InfoCell label="إشعارات دائنة" value={`- ${fmt(creditTotal)} EGP`} valueClass="text-orange-400 font-bold text-lg" />}
+            <InfoCell label={creditTotal > 0 ? 'الصافي بعد الإشعار' : 'الإجمالي'} value={`${fmt(effTotal)} EGP`} valueClass="text-blue-300 font-bold text-lg" />
+            <InfoCell label="المحصّل" value={`${fmt(paid)} EGP`} valueClass="text-green-400 font-bold text-lg" />
+            <InfoCell label="الرصيد المتبقي" value={`${fmt(remaining)} EGP`} valueClass={remaining > 0 ? 'text-red-400 font-bold text-lg' : 'text-green-400 font-bold text-lg'} />
+          </div>
+
+          {/* Admin: currency quick-edit */}
+          {canEdit && onSaveCurrency && (
+            <div className="border-t border-gray-700 pt-3">
+              {!showCurrencyEdit ? (
+                <button
+                  onClick={() => setShowCurrencyEdit(true)}
+                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-yellow-300 transition-colors"
+                >
+                  <span className="material-icons text-sm">currency_exchange</span>
+                  تعديل العملة وسعر الصرف
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-yellow-400 flex items-center gap-1">
+                    <span className="material-icons text-sm">currency_exchange</span>
+                    تعديل العملة وسعر الصرف
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <Field label="العملة" required>
+                      <select
+                        value={currencyEdit.currency}
+                        onChange={e => setCurrencyEdit(f => ({ ...f, currency: e.target.value, exchangeRate: 0 }))}
+                        className={inputCls}
+                      >
+                        <option value="EGP">EGP — جنيه مصري</option>
+                        <option value="USD">USD — دولار أمريكي</option>
+                      </select>
+                    </Field>
+                    {currencyEdit.currency === 'USD' && (
+                      <Field label="سعر الصرف (EGP / USD)" required>
+                        <input
+                          type="number" step="any" min={0}
+                          value={currencyEdit.exchangeRate}
+                          onChange={e => setCurrencyEdit(f => ({ ...f, exchangeRate: Number(e.target.value) }))}
+                          className={inputCls} placeholder="مثال: 50.5"
+                        />
+                      </Field>
+                    )}
+                    <Field label={`المبلغ قبل الضريبة (${currencyEdit.currency})`}>
+                      <input
+                        type="number" step="any" min={0}
+                        value={currencyEdit.amount}
+                        onChange={e => setCurrencyEdit(f => ({ ...f, amount: Number(e.target.value) }))}
+                        className={inputCls}
+                      />
+                    </Field>
+                    <Field label={`الضريبة (${currencyEdit.currency})`}>
+                      <input
+                        type="number" step="any" min={0}
+                        value={currencyEdit.tax}
+                        onChange={e => setCurrencyEdit(f => ({ ...f, tax: Number(e.target.value) }))}
+                        className={inputCls}
+                      />
+                    </Field>
+                  </div>
+                  {/* Preview */}
+                  <div className="bg-[#1b2130] rounded-lg px-4 py-3 grid grid-cols-3 gap-3 text-sm">
+                    <div>
+                      <p className="text-gray-500 text-xs">الإجمالي</p>
+                      <p className="text-white font-bold">{fmt(ceTotal)} {currencyEdit.currency}</p>
+                      {currencyEdit.currency === 'USD' && Number(currencyEdit.exchangeRate) > 0 && (
+                        <p className="text-gray-400 text-xs">≈ {fmt(ceTotal * Number(currencyEdit.exchangeRate))} EGP</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-gray-500 text-xs">خصم ض.ت.ح ({invoice.invoiceType === 'خدمات' ? '3%' : '1%'})</p>
+                      <p className="text-yellow-300 font-semibold">- {fmt(ceWithholding)} {currencyEdit.currency}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 text-xs">الصافي</p>
+                      <p className="text-green-400 font-bold">{fmt(ceTotal - ceWithholding)} {currencyEdit.currency}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleCurrencySave}
+                      className="flex items-center gap-1.5 bg-yellow-700 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm transition-colors"
+                    >
+                      <span className="material-icons text-sm">{currencySaved ? 'check' : 'save'}</span>
+                      {currencySaved ? 'تم الحفظ' : 'حفظ التعديل'}
+                    </button>
+                    <button
+                      onClick={() => { setShowCurrencyEdit(false); setCurrencyEdit({ currency: invoice.currency || 'EGP', exchangeRate: invoice.exchangeRate || 0, amount: invoice.amount, tax: invoice.tax }); }}
+                      className="px-4 py-2 bg-[#1b2130] hover:bg-[#2d3648] text-gray-400 rounded-lg text-sm transition-colors"
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-700">
+          <button
+            onClick={() => setDetailTab('details')}
+            className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${detailTab === 'details' ? 'border-primary text-primary' : 'border-transparent text-gray-400 hover:text-white'}`}
+          >
+            <span className="material-icons text-sm align-middle ml-1">receipt_long</span>
+            تفاصيل الفاتورة
+          </button>
+          <button
+            onClick={() => setDetailTab('credit-notes')}
+            className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-1 ${detailTab === 'credit-notes' ? 'border-orange-400 text-orange-400' : 'border-transparent text-gray-400 hover:text-white'}`}
+          >
+            <span className="material-icons text-sm align-middle">remove_circle_outline</span>
+            إشعار دائن
+            {(invoice.creditNotes?.length ?? 0) > 0 && (
+              <span className="bg-orange-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                {invoice.creditNotes!.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {detailTab === 'details' && (
+          <>
+            {/* Collection Follow-up */}
+            <div className="bg-[#232b3e] rounded-xl border border-gray-700 overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-700 flex items-center gap-2">
+                <span className="material-icons text-yellow-400 text-lg">follow_the_signs</span>
+                <h3 className="font-semibold text-white">متابعة التحصيل</h3>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <Field label="حالة التحصيل">
+                    <select value={followUp.collectionStatus} onChange={e => setFollowUp(f => ({ ...f, collectionStatus: e.target.value as CollectionStatus }))} className={inputCls}>
+                      {(['Overdue', 'Paid'] as CollectionStatus[]).map(s => (
+                        <option key={s} value={s}>{collectionStatusAr[s]}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="تاريخ آخر متابعة">
+                    <input type="date" value={followUp.lastFollowUp} onChange={e => setFollowUp(f => ({ ...f, lastFollowUp: e.target.value }))} className={inputCls} />
+                  </Field>
+                  <Field label="تاريخ المتابعة القادمة">
+                    <input type="date" value={followUp.nextFollowUp} onChange={e => setFollowUp(f => ({ ...f, nextFollowUp: e.target.value }))} className={inputCls} />
+                  </Field>
+                </div>
+                <Field label="ملاحظات المتابعة">
+                  <textarea value={followUp.notes} onChange={e => setFollowUp(f => ({ ...f, notes: e.target.value }))} rows={3} className={`${inputCls} resize-none`} placeholder="أضف ملاحظات المتابعة هنا..." />
+                </Field>
+                <button onClick={handleSave} className="flex items-center gap-2 bg-primary hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                  <span className="material-icons text-sm">{saved ? 'check' : 'save'}</span>
+                  {saved ? 'تم الحفظ' : 'حفظ المتابعة'}
+                </button>
+              </div>
+            </div>
+
+            {/* Payment History */}
+            <PaymentHistoryTable
+              invoice={invoice}
+              canEdit={canEdit}
+              onUpdatePayment={onUpdatePayment}
+              onDeletePayment={onDeletePayment}
+            />
+          </>
+        )}
+
+        {detailTab === 'credit-notes' && (
+          <>
+            {/* Add Credit Note Form */}
+            <div className="bg-[#232b3e] rounded-xl border border-orange-700/40 overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-700 flex items-center gap-2">
+                <span className="material-icons text-orange-400 text-lg">remove_circle_outline</span>
+                <h3 className="font-semibold text-white">إضافة إشعار دائن</h3>
+              </div>
+              <form onSubmit={handleCnSubmit} className="p-5 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="تاريخ الإشعار" required>
+                    <input type="date" value={cnForm.date} onChange={e => setCn('date', e.target.value)} required className={inputCls} />
+                  </Field>
+                  <Field label="قيمة الإشعار (EGP)" required>
+                    <input type="number" step="any" min={0.01} max={effTotal} value={cnForm.amount} onChange={e => setCn('amount', e.target.value)} required className={inputCls} placeholder="0" />
+                  </Field>
+                  <Field label="رقم المرجع">
+                    <input type="text" value={cnForm.referenceNo} onChange={e => setCn('referenceNo', e.target.value)} className={inputCls} placeholder="CN-0001" />
+                  </Field>
+                </div>
+                <Field label="سبب الإشعار الدائن" required>
+                  <textarea value={cnForm.reason} onChange={e => setCn('reason', e.target.value)} required rows={2} className={`${inputCls} resize-none`} placeholder="مثال: خصم جزئي، مرتجع بضاعة، تعديل سعر..." />
+                </Field>
+                {cnForm.amount && Number(cnForm.amount) > 0 && (
+                  <div className="bg-[#1b2130] rounded-lg px-4 py-3 flex items-center justify-between text-sm">
+                    <span className="text-gray-400">الصافي بعد هذا الإشعار</span>
+                    <span className="text-orange-300 font-bold text-lg">{fmt(effTotal - Number(cnForm.amount))} EGP</span>
+                  </div>
+                )}
+                <button type="submit" className="flex items-center gap-2 bg-orange-700 hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors">
+                  <span className="material-icons text-sm">{cnSaved ? 'check' : 'add'}</span>
+                  {cnSaved ? 'تم إضافة الإشعار' : 'إضافة الإشعار الدائن'}
+                </button>
+              </form>
+            </div>
+
+            {/* Credit Notes History */}
+            <div className="bg-[#232b3e] rounded-xl border border-gray-700 overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-700 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="material-icons text-orange-400 text-lg">list_alt</span>
+                  <h3 className="font-semibold text-white">الإشعارات الدائنة المسجّلة</h3>
+                </div>
+                {creditTotal > 0 && (
+                  <span className="text-orange-300 font-semibold text-sm">إجمالي الخصم: {fmt(creditTotal)} EGP</span>
+                )}
+              </div>
+              {(invoice.creditNotes?.length ?? 0) === 0 ? (
+                <div className="p-8 text-center text-gray-500 text-sm">لا توجد إشعارات دائنة مسجّلة</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-gray-500 text-xs border-b border-gray-700 bg-[#1b2130]">
+                      <th className="px-5 py-3 text-right">التاريخ</th>
+                      <th className="px-5 py-3 text-right">القيمة</th>
+                      <th className="px-5 py-3 text-right">رقم المرجع</th>
+                      <th className="px-5 py-3 text-right">السبب</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoice.creditNotes!.map(cn => (
+                      <tr key={cn.id} className="border-b border-gray-700/50">
+                        <td className="px-5 py-3 text-gray-300">{cn.date}</td>
+                        <td className="px-5 py-3 text-orange-400 font-semibold">- {fmt(cn.amount)} EGP</td>
+                        <td className="px-5 py-3 text-gray-400 font-mono text-xs">{cn.referenceNo || '—'}</td>
+                        <td className="px-5 py-3 text-gray-300">{cn.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </>
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-gray-700">
-        <button
-          onClick={() => setDetailTab('details')}
-          className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${detailTab === 'details' ? 'border-primary text-primary' : 'border-transparent text-gray-400 hover:text-white'}`}
-        >
-          <span className="material-icons text-sm align-middle ml-1">receipt_long</span>
-          تفاصيل الفاتورة
-        </button>
-        <button
-          onClick={() => setDetailTab('credit-notes')}
-          className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-1 ${detailTab === 'credit-notes' ? 'border-orange-400 text-orange-400' : 'border-transparent text-gray-400 hover:text-white'}`}
-        >
-          <span className="material-icons text-sm align-middle">remove_circle_outline</span>
-          إشعار دائن
-          {(invoice.creditNotes?.length ?? 0) > 0 && (
-            <span className="bg-orange-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
-              {invoice.creditNotes!.length}
-            </span>
-          )}
-        </button>
-      </div>
-
-      {detailTab === 'details' && (
-        <>
-          {/* Collection Follow-up */}
-          <div className="bg-[#232b3e] rounded-xl border border-gray-700 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-700 flex items-center gap-2">
-              <span className="material-icons text-yellow-400 text-lg">follow_the_signs</span>
-              <h3 className="font-semibold text-white">متابعة التحصيل</h3>
-            </div>
-            <div className="p-5 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <Field label="حالة التحصيل">
-                  <select value={followUp.collectionStatus} onChange={e => setFollowUp(f => ({ ...f, collectionStatus: e.target.value as CollectionStatus }))} className={inputCls}>
-                    {(['Overdue', 'Paid'] as CollectionStatus[]).map(s => (
-                      <option key={s} value={s}>{collectionStatusAr[s]}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="تاريخ آخر متابعة">
-                  <input type="date" value={followUp.lastFollowUp} onChange={e => setFollowUp(f => ({ ...f, lastFollowUp: e.target.value }))} className={inputCls} />
-                </Field>
-                <Field label="تاريخ المتابعة القادمة">
-                  <input type="date" value={followUp.nextFollowUp} onChange={e => setFollowUp(f => ({ ...f, nextFollowUp: e.target.value }))} className={inputCls} />
-                </Field>
-              </div>
-              <Field label="ملاحظات المتابعة">
-                <textarea value={followUp.notes} onChange={e => setFollowUp(f => ({ ...f, notes: e.target.value }))} rows={3} className={`${inputCls} resize-none`} placeholder="أضف ملاحظات المتابعة هنا..." />
-              </Field>
-              <button onClick={handleSave} className="flex items-center gap-2 bg-primary hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
-                <span className="material-icons text-sm">{saved ? 'check' : 'save'}</span>
-                {saved ? 'تم الحفظ' : 'حفظ المتابعة'}
-              </button>
-            </div>
-          </div>
-
-          {/* Payment History */}
-          <PaymentHistoryTable
-            invoice={invoice}
-            canEdit={canEdit}
-            onUpdatePayment={onUpdatePayment}
-            onDeletePayment={onDeletePayment}
-          />
-        </>
-      )}
-
-      {detailTab === 'credit-notes' && (
-        <>
-          {/* Add Credit Note Form */}
-          <div className="bg-[#232b3e] rounded-xl border border-orange-700/40 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-700 flex items-center gap-2">
-              <span className="material-icons text-orange-400 text-lg">remove_circle_outline</span>
-              <h3 className="font-semibold text-white">إضافة إشعار دائن</h3>
-            </div>
-            <form onSubmit={handleCnSubmit} className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="تاريخ الإشعار" required>
-                  <input type="date" value={cnForm.date} onChange={e => setCn('date', e.target.value)} required className={inputCls} />
-                </Field>
-                <Field label="قيمة الإشعار (EGP)" required>
-                  <input type="number" step="any" min={0.01} max={effTotal} value={cnForm.amount} onChange={e => setCn('amount', e.target.value)} required className={inputCls} placeholder="0" />
-                </Field>
-                <Field label="رقم المرجع">
-                  <input type="text" value={cnForm.referenceNo} onChange={e => setCn('referenceNo', e.target.value)} className={inputCls} placeholder="CN-0001" />
-                </Field>
-              </div>
-              <Field label="سبب الإشعار الدائن" required>
-                <textarea value={cnForm.reason} onChange={e => setCn('reason', e.target.value)} required rows={2} className={`${inputCls} resize-none`} placeholder="مثال: خصم جزئي، مرتجع بضاعة، تعديل سعر..." />
-              </Field>
-              {cnForm.amount && Number(cnForm.amount) > 0 && (
-                <div className="bg-[#1b2130] rounded-lg px-4 py-3 flex items-center justify-between text-sm">
-                  <span className="text-gray-400">الصافي بعد هذا الإشعار</span>
-                  <span className="text-orange-300 font-bold text-lg">{fmt(effTotal - Number(cnForm.amount))} EGP</span>
-                </div>
-              )}
-              <button type="submit" className="flex items-center gap-2 bg-orange-700 hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors">
-                <span className="material-icons text-sm">{cnSaved ? 'check' : 'add'}</span>
-                {cnSaved ? 'تم إضافة الإشعار' : 'إضافة الإشعار الدائن'}
-              </button>
-            </form>
-          </div>
-
-          {/* Credit Notes History */}
-          <div className="bg-[#232b3e] rounded-xl border border-gray-700 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-700 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="material-icons text-orange-400 text-lg">list_alt</span>
-                <h3 className="font-semibold text-white">الإشعارات الدائنة المسجّلة</h3>
-              </div>
-              {creditTotal > 0 && (
-                <span className="text-orange-300 font-semibold text-sm">إجمالي الخصم: {fmt(creditTotal)} EGP</span>
-              )}
-            </div>
-            {(invoice.creditNotes?.length ?? 0) === 0 ? (
-              <div className="p-8 text-center text-gray-500 text-sm">لا توجد إشعارات دائنة مسجّلة</div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-gray-500 text-xs border-b border-gray-700 bg-[#1b2130]">
-                    <th className="px-5 py-3 text-right">التاريخ</th>
-                    <th className="px-5 py-3 text-right">القيمة</th>
-                    <th className="px-5 py-3 text-right">رقم المرجع</th>
-                    <th className="px-5 py-3 text-right">السبب</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {invoice.creditNotes!.map(cn => (
-                    <tr key={cn.id} className="border-b border-gray-700/50">
-                      <td className="px-5 py-3 text-gray-300">{cn.date}</td>
-                      <td className="px-5 py-3 text-orange-400 font-semibold">- {fmt(cn.amount)} EGP</td>
-                      <td className="px-5 py-3 text-gray-400 font-mono text-xs">{cn.referenceNo || '—'}</td>
-                      <td className="px-5 py-3 text-gray-300">{cn.reason}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* PDF Attachment Preview */}
+      {/* PDF Attachment Preview (Side Column) */}
       {invoice.pdfData && (
-        <div className="bg-[#232b3e] rounded-xl border border-gray-700 overflow-hidden mt-5">
-          <div className="px-5 py-4 border-b border-gray-700 flex items-center gap-3">
+        <div className="order-2 lg:order-2 bg-[#232b3e] rounded-xl border border-gray-700 overflow-hidden flex flex-col min-h-[600px] self-start sticky top-5">
+          <div className="px-5 py-4 border-b border-gray-700 flex items-center gap-3 bg-[#1b2130]">
             <span className="material-icons text-orange-400 text-base">picture_as_pdf</span>
             <h3 className="font-semibold text-white text-sm">نسخة الفاتورة</h3>
-            {invoice.pdfName && <span className="text-gray-500 text-xs mr-auto">{invoice.pdfName}</span>}
+            {invoice.pdfName && <span className="text-gray-500 text-xs mr-auto truncate max-w-[200px]" title={invoice.pdfName}>{invoice.pdfName}</span>}
+            <a
+              href={invoice.pdfData}
+              target="_blank"
+              rel="noopener noreferrer"
+              download={invoice.pdfName || `${invoice.invoiceNo}.pdf`}
+              className="text-gray-400 hover:text-orange-400 transition-colors"
+              title="فتح في نافذة جديدة"
+            >
+              <span className="material-icons text-base">open_in_new</span>
+            </a>
           </div>
           <iframe
             src={invoice.pdfData}
             title="نسخة الفاتورة"
-            className="w-full"
-            style={{ height: '600px', background: '#fff' }}
+            className="flex-1 w-full bg-white"
+            style={{ minHeight: '600px' }}
           />
+        </div>
+      )}
+
+      {/* ETA PDF (Side Column) — when no PDF was uploaded with the invoice */}
+      {!invoice.pdfData && etaPdf.status !== 'idle' && (
+        <div className="order-2 lg:order-2 bg-[#232b3e] rounded-xl border border-gray-700 overflow-hidden flex flex-col min-h-[600px] self-start sticky top-5">
+          <div className="px-5 py-4 border-b border-gray-700 flex items-center gap-3 bg-[#1b2130]">
+            <span className="material-icons text-orange-400 text-base">picture_as_pdf</span>
+            <h3 className="font-semibold text-white text-sm">نسخة الفاتورة الإلكترونية (ETA)</h3>
+            {invoice.etaUuid && <span className="text-gray-500 text-xs font-mono mr-auto truncate max-w-[220px]" title={invoice.etaUuid}>{invoice.etaUuid}</span>}
+            {etaPdf.status === 'ready' && (
+              <a href={etaPdf.url} target="_blank" rel="noopener noreferrer" download={`ETA_${invoice.invoiceNo.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`}
+                className={`text-gray-400 hover:text-orange-400 transition-colors ${invoice.etaUuid ? '' : 'mr-auto'}`} title="فتح في نافذة جديدة">
+                <span className="material-icons text-base">open_in_new</span>
+              </a>
+            )}
+          </div>
+
+          {etaPdf.status === 'ready' && (
+            <iframe src={etaPdf.url} title="نسخة الفاتورة الإلكترونية" className="flex-1 w-full bg-white" style={{ minHeight: '600px' }} />
+          )}
+
+          {etaPdf.status === 'loading' && (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400 text-sm">
+              <span className="material-icons animate-spin text-3xl">refresh</span>
+              {invoice.etaUuid ? 'جاري تحميل الفاتورة من منظومة الفاتورة الإلكترونية...' : 'جاري البحث عن الفاتورة في منظومة الفاتورة الإلكترونية...'}
+            </div>
+          )}
+
+          {(etaPdf.status === 'not-found' || etaPdf.status === 'error' || etaPdf.status === 'no-creds') && (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6 text-center">
+              <span className="material-icons text-4xl text-gray-500">{etaPdf.status === 'error' ? 'error_outline' : 'search_off'}</span>
+              <p className="text-gray-300 text-sm">
+                {etaPdf.status === 'no-creds' && 'لم يتم إعداد بيانات الربط مع منظومة الفاتورة الإلكترونية (ETA).'}
+                {etaPdf.status === 'not-found' && `لم يتم العثور على الفاتورة ${invoice.invoiceNo} في منظومة الفاتورة الإلكترونية حول تاريخ ${invoice.invoiceDate}.`}
+                {etaPdf.status === 'error' && 'تعذر جلب ملف PDF من منظومة الفاتورة الإلكترونية.'}
+              </p>
+              {etaPdf.error && <p className="text-red-400 text-xs font-mono break-all max-w-md" dir="ltr">{etaPdf.error}</p>}
+              {etaPdf.status !== 'no-creds' && (
+                <>
+                  <button onClick={() => loadEtaPdf()} className="flex items-center gap-1 bg-[#2d3648] hover:bg-[#3a4458] text-gray-300 px-3 py-2 rounded-lg text-sm transition-colors">
+                    <span className="material-icons text-sm">refresh</span>
+                    إعادة المحاولة
+                  </button>
+                  <div className="w-full max-w-md space-y-2">
+                    <label className="block text-xs text-gray-400 text-right">أو أدخل UUID الفاتورة / رابطها من البوابة:</label>
+                    <div className="flex gap-2">
+                      <input
+                        value={manualUuid}
+                        onChange={e => setManualUuid(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') linkManualUuid(); }}
+                        placeholder="XXXXXXXXXXXXXXXXXXXXXXXXXX"
+                        dir="ltr"
+                        className="flex-1 bg-[#1b2130] border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200 font-mono focus:outline-none focus:border-blue-500"
+                      />
+                      <button onClick={linkManualUuid} disabled={!manualUuid.trim()}
+                        className="bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white px-3 py-2 rounded-lg text-sm transition-colors">
+                        ربط
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -4636,7 +4848,7 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
       </div>
 
       {/* Tab Bar — only show when not on detail / create screens */}
-      {(screen === 'dashboard' || screen === 'invoice-list' || screen === 'payment-entry' || screen === 'history' || screen === 'monthly-todo' || screen === 'statement') && (
+      {(screen === 'dashboard' || screen === 'invoice-list' || screen === 'payment-entry' || screen === 'history' || screen === 'monthly-todo' || screen === 'statement' || screen === 'einvoice-recon') && (
         <div className="flex gap-1 bg-[#1b2130] p-1 rounded-xl w-fit">
           {TABS.map(tab => (
             <button
@@ -4658,6 +4870,9 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
       {/* Screen Router */}
       {screen === 'dashboard' && (
         <DashboardScreen invoices={invoices} onOpen={inv => { setActiveTab('invoice-list'); openInvoice(inv); }} />
+      )}
+      {screen === 'einvoice-recon' && (
+        <EInvoiceReconciliation user={user} />
       )}
       {screen === 'invoice-list' && (
         <InvoiceListScreen
@@ -4686,6 +4901,8 @@ const CollectionsDashboard: React.FC<CollectionsDashboardProps> = ({ user }) => 
           onSaveCurrency={patch => patchInvoice(selectedInvoice.id, patch)}
           onUpdatePayment={(pid, patch) => updatePayment(selectedInvoice.id, pid, patch)}
           onDeletePayment={(pid) => deletePayment(selectedInvoice.id, pid)}
+          user={user}
+          onLinkEtaUuid={uuid => { if (uuid !== selectedInvoice.etaUuid) patchInvoice(selectedInvoice.id, { etaUuid: uuid }); }}
         />
       )}
       {screen === 'payment-entry' && (

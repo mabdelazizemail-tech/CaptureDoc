@@ -3,24 +3,48 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 const ETA_TOKEN_URL = 'https://id.eta.gov.eg/connect/token';
 const ETA_API_BASE  = 'https://api.invoicing.eta.gov.eg';
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+// Tokens live ~1h; cache per credential pair so bursts of calls (e.g. bulk PDF
+// export) don't re-authenticate every request and trip ETA throttling.
+const tokenCache = new Map<string, { token: string; expiresAt: number }>();
+
 async function getAccessToken(clientId: string, clientSecret: string): Promise<string> {
+  const key = `${clientId}:${clientSecret}`;
+  const cached = tokenCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.token;
+
   const res = await fetch(ETA_TOKEN_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      Authorization: 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64'),
+      Authorization: 'Basic ' + Buffer.from(key).toString('base64'),
     },
     body: 'grant_type=client_credentials&scope=InvoicingAPI',
   });
   if (!res.ok) throw new Error(`ETA auth failed (${res.status}): ${await res.text()}`);
-  const data = await res.json() as { access_token?: string };
+  const data = await res.json() as { access_token?: string; expires_in?: number };
   if (!data.access_token) throw new Error('No access_token in ETA response');
+  const ttlMs = Math.max(60, (data.expires_in ?? 3600) - 120) * 1000;
+  tokenCache.set(key, { token: data.access_token, expiresAt: Date.now() + ttlMs });
   return data.access_token;
+}
+
+// ETA throttles aggressively (429) and occasionally returns transient 5xx;
+// retry those with backoff, honouring Retry-After when present.
+async function etaFetch(url: string, token: string, attempts = 4): Promise<Response> {
+  for (let i = 1; ; i++) {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const retryable = res.status === 429 || res.status >= 500;
+    if (!retryable || i >= attempts) return res;
+    const retryAfter = Number(res.headers.get('retry-after'));
+    const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 10_000) : 1500 * i;
+    await sleep(waitMs);
+  }
 }
 
 // GET /api/v1.0/documents/search — sent or received invoices
 const CHUNK_DAYS = 30; // ETA max per call
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 const fmt = (d: Date, eod = false) =>
   d.toISOString().slice(0, 10) + (eod ? 'T23:59:59' : 'T00:00:00');
@@ -41,9 +65,7 @@ async function searchWindow(token: string, direction: 'Sent' | 'Received', param
     issueDateTo:   params.issueDateTo,
     ...(params.continuationToken && { continuationToken: params.continuationToken }),
   });
-  const res = await fetch(`${ETA_API_BASE}/api/v1.0/documents/search?${qp}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await etaFetch(`${ETA_API_BASE}/api/v1.0/documents/search?${qp}`, token);
   if (!res.ok) throw new Error(`ETA search failed (${res.status}): ${await res.text()}`);
   return res.json();
 }
@@ -116,18 +138,14 @@ async function searchDocuments(token: string, direction: 'Sent' | 'Received', pa
 
 // GET /api/v1.0/documents/{uuid}/raw — single document
 async function getDocument(token: string, uuid: string) {
-  const res = await fetch(`${ETA_API_BASE}/api/v1.0/documents/${uuid}/raw`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await etaFetch(`${ETA_API_BASE}/api/v1.0/documents/${uuid}/raw`, token);
   if (!res.ok) throw new Error(`ETA document fetch failed (${res.status}): ${await res.text()}`);
   return res.json();
 }
 
 // GET /api/v1.0/documents/{uuid}/pdf — PDF representation
 async function getDocumentPdf(token: string, uuid: string): Promise<string> {
-  const res = await fetch(`${ETA_API_BASE}/api/v1.0/documents/${uuid}/pdf`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await etaFetch(`${ETA_API_BASE}/api/v1.0/documents/${uuid}/pdf`, token);
   if (!res.ok) throw new Error(`ETA PDF fetch failed (${res.status}): ${await res.text()}`);
   const buf = await res.arrayBuffer();
   return Buffer.from(buf).toString('base64');

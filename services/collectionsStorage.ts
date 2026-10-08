@@ -51,6 +51,7 @@ interface Invoice {
   payments: Payment[];
   pdfData?: string;
   pdfName?: string;
+  etaUuid?: string; // ETA e-invoice UUID, used to fetch the official PDF
   currency?: 'EGP' | 'USD';
   exchangeRate?: number;
   invoiceType?: string;
