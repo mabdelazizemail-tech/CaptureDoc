@@ -31,6 +31,7 @@ interface ETAInvoice {
     dateTimeIssued: string;
     total: number;
     status: string; // E-Invoice status
+    creditNotes?: { no: string; total: number }[]; // ETA credit notes referencing this invoice
 }
 
 interface ReconRow {
@@ -47,6 +48,7 @@ interface ReconRow {
     submissionDate: string;
     internalPdfData?: string;
     internalPdfName?: string;
+    creditNotes?: string; // ETA credit note numbers that reverse this invoice
 }
 
 export const EInvoiceReconciliation: React.FC<{ user: User }> = ({ user }) => {
@@ -110,24 +112,54 @@ export const EInvoiceReconciliation: React.FC<{ user: User }> = ({ user }) => {
             // 2. Fetch ETA
             let etaDocs: ETAInvoice[] = [];
             if (etaClientId && etaClientSec) {
-                const call = (secret: string) => fetch('/api/eta-document', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'list-sent', issueDateFrom: dateFrom + 'T00:00:00', issueDateTo: dateTo + 'T23:59:59', clientId: etaClientId, clientSecret: secret })
-                }).then(r => r.json());
-                
-                let etaRes = await call(etaClientSec);
-                if (!etaRes.ok && etaClientSec2 && (etaRes.error ?? '').toLowerCase().includes('auth')) {
-                    etaRes = await call(etaClientSec2);
-                }
+                const etaCall = async (body: object) => {
+                    const call = (secret: string) => fetch('/api/eta-document', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ...body, clientId: etaClientId, clientSecret: secret })
+                    }).then(r => r.json());
+                    const res = await call(etaClientSec);
+                    if (!res.ok && etaClientSec2 && (res.error ?? '').toLowerCase().includes('auth')) return call(etaClientSec2);
+                    return res;
+                };
+
+                const etaRes = await etaCall({ action: 'list-sent', issueDateFrom: dateFrom + 'T00:00:00', issueDateTo: dateTo + 'T23:59:59' });
                 if (etaRes.ok) {
                     etaDocs = (etaRes.invoices || []).map((i: any) => ({
                         ...i,
                         status: i.status || 'Submitted/Exported' // ETA list API doesn't always return full status
                     }));
                 }
+
+                // 3. Credit notes: an ETA invoice reversed by a credit note is cancelled,
+                // not missing internally. Notes are usually issued after the invoice,
+                // so look up to 90 days past the report period.
+                if (etaDocs.length > 0) {
+                    try {
+                        const cnTo = new Date(dateTo); cnTo.setDate(cnTo.getDate() + 90);
+                        const today = new Date().toISOString().slice(0, 10);
+                        const cnToIso = cnTo.toISOString().slice(0, 10);
+                        const cnRes = await etaCall({ action: 'list-sent', documentType: 'c', issueDateFrom: dateFrom + 'T00:00:00', issueDateTo: (cnToIso > today ? today : cnToIso) + 'T23:59:59' });
+                        const creditNotes: { uuid: string; internalId: string; total: number }[] = cnRes.ok ? (cnRes.invoices || []) : [];
+                        const refs: Record<string, string[]> = {};
+                        for (let i = 0; i < creditNotes.length; i += 25) {
+                            const batch = creditNotes.slice(i, i + 25).map(c => c.uuid);
+                            const refRes = await etaCall({ action: 'references', uuids: batch });
+                            if (refRes.ok) Object.assign(refs, refRes.references);
+                        }
+                        const byInvoice = new Map<string, { no: string; total: number }[]>();
+                        creditNotes.forEach(cn => (refs[cn.uuid] || []).forEach(invUuid => {
+                            const arr = byInvoice.get(invUuid) || [];
+                            arr.push({ no: cn.internalId, total: cn.total });
+                            byInvoice.set(invUuid, arr);
+                        }));
+                        etaDocs = etaDocs.map(d => byInvoice.has(d.uuid) ? { ...d, creditNotes: byInvoice.get(d.uuid) } : d);
+                    } catch (e) {
+                        console.warn('[recon] credit note lookup failed', e);
+                    }
+                }
             }
-            
+
             setInternalInvoices(filteredInternal || []);
             setEtaInvoices(etaDocs);
             
@@ -158,11 +190,34 @@ export const EInvoiceReconciliation: React.FC<{ user: User }> = ({ user }) => {
         const intMap = new Map<string, InternalInvoice>();
         internalInvoices.forEach(inv => intMap.set(normalizeInv(inv.invoiceNo), inv));
 
+        // An ETA invoice whose credit notes cover its full value is cancelled
+        const isCancelledByCN = (eta: ETAInvoice) =>
+            (eta.creditNotes || []).reduce((sum, cn) => sum + cn.total, 0) >= eta.total - 1;
+        const cnLabel = (eta: ETAInvoice) => (eta.creditNotes || []).map(cn => cn.no).join(', ');
+
+        const cancelledRow = (eta: ETAInvoice): ReconRow => ({
+            invoiceNo: eta.internalId,
+            etaUuid: eta.uuid,
+            invoiceDate: eta.dateTimeIssued.slice(0, 10),
+            customer: eta.receiverName,
+            internalAmount: 0,
+            etaAmount: eta.total,
+            variance: 0,
+            submissionStatus: eta.status,
+            reconciliationStatus: 'Cancelled by Credit Note',
+            collectionStatus: '—',
+            submissionDate: eta.dateTimeIssued,
+            creditNotes: cnLabel(eta),
+        });
+
         // Process Internal Invoices
         internalInvoices.forEach(intInv => {
             const key = normalizeInv(intInv.invoiceNo);
-            const etas = etaMap.get(key) || [];
-            
+            const allEtas = etaMap.get(key) || [];
+            // Credit-noted ETA invoices get their own row and don't count as duplicates
+            allEtas.filter(isCancelledByCN).forEach(eta => rows.push(cancelledRow(eta)));
+            const etas = allEtas.filter(eta => !isCancelledByCN(eta));
+
             if (etas.length === 0) {
                 rows.push({
                     invoiceNo: intInv.invoiceNo,
@@ -195,7 +250,8 @@ export const EInvoiceReconciliation: React.FC<{ user: User }> = ({ user }) => {
                         collectionStatus: intInv.collectionStatus,
                         submissionDate: eta.dateTimeIssued,
                         internalPdfData: intInv.pdfData,
-                        internalPdfName: intInv.pdfName
+                        internalPdfName: intInv.pdfName,
+                        creditNotes: cnLabel(eta) || undefined
                     });
                 });
             }
@@ -205,6 +261,7 @@ export const EInvoiceReconciliation: React.FC<{ user: User }> = ({ user }) => {
         etaInvoices.forEach(eta => {
             const key = normalizeInv(eta.internalId);
             if (!intMap.has(key)) {
+                if (isCancelledByCN(eta)) { rows.push(cancelledRow(eta)); return; }
                 rows.push({
                     invoiceNo: eta.internalId,
                     etaUuid: eta.uuid,
@@ -216,7 +273,8 @@ export const EInvoiceReconciliation: React.FC<{ user: User }> = ({ user }) => {
                     submissionStatus: eta.status,
                     reconciliationStatus: 'Missing from Internal System',
                     collectionStatus: 'Unknown',
-                    submissionDate: eta.dateTimeIssued
+                    submissionDate: eta.dateTimeIssued,
+                    creditNotes: cnLabel(eta) || undefined
                 });
             }
         });
@@ -243,6 +301,7 @@ export const EInvoiceReconciliation: React.FC<{ user: User }> = ({ user }) => {
             matched: 0,
             missingETA: 0,
             missingInternal: 0,
+            cancelledByCN: 0,
             discrepancies: 0,
             fullyCollected: 0,
             outstandingAmount: 0
@@ -251,6 +310,7 @@ export const EInvoiceReconciliation: React.FC<{ user: User }> = ({ user }) => {
             if (r.reconciliationStatus === 'Matched') s.matched++;
             else if (r.reconciliationStatus === 'Missing from E-Invoice') s.missingETA++;
             else if (r.reconciliationStatus === 'Missing from Internal System') s.missingInternal++;
+            else if (r.reconciliationStatus === 'Cancelled by Credit Note') s.cancelledByCN++;
             else s.discrepancies++;
 
             if (r.collectionStatus === 'Paid') s.fullyCollected++;
@@ -371,6 +431,7 @@ export const EInvoiceReconciliation: React.FC<{ user: User }> = ({ user }) => {
             'Variance': r.variance,
             'ETA Status': r.submissionStatus,
             'Recon Status': r.reconciliationStatus,
+            'Credit Notes': r.creditNotes || '',
             'Collection Status': r.collectionStatus
         }));
 
@@ -453,6 +514,7 @@ export const EInvoiceReconciliation: React.FC<{ user: User }> = ({ user }) => {
             case 'Missing from E-Invoice': return 'bg-orange-100 text-orange-800';
             case 'Missing from Internal System': return 'bg-purple-100 text-purple-800';
             case 'Amount Mismatch': return 'bg-red-100 text-red-800';
+            case 'Cancelled by Credit Note': return 'bg-slate-200 text-slate-700';
             default: return 'bg-gray-100 text-gray-800';
         }
     };
@@ -485,6 +547,7 @@ export const EInvoiceReconciliation: React.FC<{ user: User }> = ({ user }) => {
                         <option value="Missing from E-Invoice">مفقود في ETA</option>
                         <option value="Missing from Internal System">مفقود في النظام الداخلي</option>
                         <option value="Amount Mismatch">فرق في القيمة</option>
+                        <option value="Cancelled by Credit Note">ملغاة بإشعار دائن</option>
                     </select>
                 </div>
                 <button onClick={fetchReconciliationData} disabled={loading} className="bg-primary text-white px-4 py-1.5 rounded-lg text-sm font-bold shadow hover:bg-blue-700 disabled:opacity-50">
@@ -551,6 +614,7 @@ export const EInvoiceReconciliation: React.FC<{ user: User }> = ({ user }) => {
                                         <span className={`px-2 py-1 rounded text-xs font-bold ${statusColor(r.reconciliationStatus)}`}>
                                             {r.reconciliationStatus}
                                         </span>
+                                        {r.creditNotes && <div className="text-[10px] text-gray-500 mt-1">إشعار دائن: {r.creditNotes}</div>}
                                     </td>
                                     <td className="p-3">
                                         <span className="px-2 py-1 rounded bg-gray-100 text-gray-600 text-xs">

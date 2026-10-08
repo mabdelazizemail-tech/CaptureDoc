@@ -50,16 +50,19 @@ const fmt = (d: Date, eod = false) =>
   d.toISOString().slice(0, 10) + (eod ? 'T23:59:59' : 'T00:00:00');
 
 // Single 30-day-or-less window — used for continuationToken pagination too
+type DocType = 'i' | 'c' | 'd';
+
 async function searchWindow(token: string, direction: 'Sent' | 'Received', params: {
   issueDateFrom: string;
   issueDateTo:   string;
   continuationToken?: string;
   pageSize?: number;
+  documentType?: DocType;
 }) {
   const qp = new URLSearchParams({
     direction,
     status:       'Valid',
-    documentType: 'i',
+    documentType: params.documentType ?? 'i',
     pageSize:     String(params.pageSize ?? 50),
     issueDateFrom: params.issueDateFrom,
     issueDateTo:   params.issueDateTo,
@@ -76,6 +79,7 @@ async function searchDocuments(token: string, direction: 'Sent' | 'Received', pa
   issueDateTo?: string;
   continuationToken?: string;
   pageSize?: number;
+  documentType?: DocType;
 }) {
   const toDate   = params.issueDateTo   ? new Date(params.issueDateTo)   : new Date();
   const fromDate = params.issueDateFrom ? new Date(params.issueDateFrom) : (() => { const d = new Date(); d.setDate(d.getDate() - CHUNK_DAYS); return d; })();
@@ -87,6 +91,7 @@ async function searchDocuments(token: string, direction: 'Sent' | 'Received', pa
       issueDateTo:   fmt(toDate, true),
       continuationToken: params.continuationToken,
       pageSize: params.pageSize,
+      documentType: params.documentType,
     });
   }
 
@@ -98,6 +103,7 @@ async function searchDocuments(token: string, direction: 'Sent' | 'Received', pa
       issueDateFrom: fmt(fromDate),
       issueDateTo:   fmt(toDate, true),
       pageSize: params.pageSize,
+      documentType: params.documentType,
     });
   }
 
@@ -117,6 +123,7 @@ async function searchDocuments(token: string, direction: 'Sent' | 'Received', pa
         issueDateTo:   fmt(chunkEnd, true),
         continuationToken: token_,
         pageSize: 50,
+        documentType: params.documentType,
       });
       const rows: any[] = data.result ?? [];
       allDocs.push(...rows);
@@ -167,8 +174,17 @@ function parseSearchRow(doc: any) {
   };
 }
 
+// /raw returns the submitted document as a JSON string under "document"
+function rawInner(doc: any): any {
+  const d = doc.document;
+  if (typeof d === 'string') {
+    try { return JSON.parse(d); } catch { return doc; }
+  }
+  return d ?? doc;
+}
+
 function parseFullDoc(doc: any) {
-  const inner = doc.document ?? doc; // raw document has a nested "document" object
+  const inner = rawInner(doc);
   const taxTotals: any[] = inner.taxTotals ?? [];
   const tax = taxTotals.reduce((s: number, t: any) => s + Number(t.amount ?? 0), 0);
   return {
@@ -177,16 +193,18 @@ function parseFullDoc(doc: any) {
     supplier:    doc.issuerName    ?? inner.issuer?.name ?? '',
     receiver:    doc.receiverName  ?? inner.receiver?.name ?? '',
     invoiceDate: (doc.dateTimeIssued ?? inner.dateTimeIssued ?? '').slice(0, 10),
-    amount:      Number(inner.totalSalesAmount ?? inner.netAmount ?? doc.netAmount ?? 0),
+    amount:      Number(inner.netAmount ?? inner.totalSalesAmount ?? doc.netAmount ?? 0),
     tax,
     total:       Number(inner.totalAmount ?? doc.total ?? 0),
+    documentType: inner.documentType ?? '',
+    references:  (inner.references ?? []) as string[],
   };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { action, uuid, issueDateFrom, issueDateTo, continuationToken, clientId: bodyId, clientSecret: bodySec } = req.body as any;
+  const { action, uuid, uuids, documentType, issueDateFrom, issueDateTo, continuationToken, clientId: bodyId, clientSecret: bodySec } = req.body as any;
 
   const clientId     = bodyId     || process.env.ETA_CLIENT_ID;
   const clientSecret = bodySec    || process.env.ETA_CLIENT_SECRET;
@@ -198,7 +216,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (action === 'list' || action === 'list-sent') {
       const direction = action === 'list-sent' ? 'Sent' : 'Received';
-      const data = await searchDocuments(token, direction, { issueDateFrom, issueDateTo, continuationToken });
+      const docType: DocType = ['i', 'c', 'd'].includes(documentType) ? documentType : 'i';
+      const data = await searchDocuments(token, direction, { issueDateFrom, issueDateTo, continuationToken, documentType: docType });
       const rows: any[] = data.result ?? [];
       const nextToken: string = data.metadata?.continuationToken ?? '';
       return res.status(200).json({
@@ -214,12 +233,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true, invoice: parseFullDoc(doc) });
     }
 
+    // Which documents each credit/debit note references (the invoices it adjusts)
+    if (action === 'references' && Array.isArray(uuids)) {
+      const references: Record<string, string[]> = {};
+      const errors: Record<string, string> = {};
+      for (const [i, id] of (uuids as string[]).slice(0, 25).entries()) {
+        try {
+          references[id] = (rawInner(await getDocument(token, id)).references ?? []) as string[];
+        } catch (e: any) {
+          errors[id] = e.message ?? 'Unknown error';
+        }
+        if (i < uuids.length - 1) await sleep(500);
+      }
+      return res.status(200).json({ ok: true, references, errors });
+    }
+
     if (action === 'pdf' && uuid) {
       const base64 = await getDocumentPdf(token, uuid);
       return res.status(200).json({ ok: true, pdf: base64 });
     }
 
-    return res.status(400).json({ error: 'action must be "list", "get", or "pdf"' });
+    return res.status(400).json({ error: 'action must be "list", "list-sent", "get", "references", or "pdf"' });
   } catch (err: any) {
     return res.status(502).json({ ok: false, error: err.message ?? 'Unknown error' });
   }
